@@ -1,0 +1,42 @@
+name: MASt3R
+family: dust3r
+description: "Matching And Stereo 3D Reconstruction"
+paper: "https://arxiv.org/abs/2406.09756"
+type: static_matching
+
+repo:
+  url: https://github.com/naver/mast3r
+  branch: main
+  server_path: /hdd3/kykt26/code/mast3r
+
+environment:
+  conda_env: dust3r
+  python: "3.11"
+  torch: "2.5.1+cu121"
+
+checkpoints:
+  - name: MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth
+    path: /hdd3/kykt26/models/
+    size_gb: 1.4
+
+build_steps: []
+
+smoke_test:
+  script: "python -c \"from mast3r.model import AsymmetricMASt3R; print('OK')\""
+  expected: "OK"
+
+runner:
+  script: runners/mast3r_runner.py
+  conda_env: dust3r
+  default_params:
+    image_size: 512
+    niter: 300
+
+output_contract:
+  required:
+    - matches.png
+    - pointcloud.ply
+    - scene_meta.json
+
+status: integrated
+priority: high

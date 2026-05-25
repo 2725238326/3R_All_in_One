@@ -1,0 +1,161 @@
+{
+  "last_updated": "2026-04-21",
+  "purpose": "Shared sample plan for active 3R model smoke tests and cross-model evaluation.",
+  "active_models": [
+    "mast3r",
+    "monst3r",
+    "spann3r",
+    "align3r",
+    "fast3r",
+    "cut3r"
+  ],
+  "deferred_models": [
+    "dust3r_multi_image",
+    "pi3x",
+    "zipmap",
+    "lingbot_map"
+  ],
+  "samples": [
+    {
+      "id": "static_pair_easy",
+      "source_type": "images",
+      "target_file_count": "2",
+      "status": "seeded_from_job_20260420-222729",
+      "seed_job_id": "20260420-222729",
+      "purpose": "Two-image static baseline already validated through MASt3R; useful for export, inspector, and static pipeline regression checks.",
+      "required_models": [
+        "mast3r"
+      ],
+      "optional_models": [
+        "spann3r",
+        "fast3r"
+      ],
+      "manual_criteria": [
+        "Two views should have clear overlap and parallax.",
+        "MASt3R pointcloud and match visualization should remain inspectable.",
+        "Use as a quick static sanity check before larger 3R comparison samples."
+      ]
+    },
+    {
+      "id": "static_multiview_small",
+      "source_type": "images",
+      "target_file_count": "3-8",
+      "status": "needs_selection",
+      "purpose": "Static multi-view reconstruction baseline for MASt3R and Spann3R.",
+      "required_models": [
+        "mast3r",
+        "spann3r"
+      ],
+      "optional_models": [
+        "fast3r",
+        "cut3r"
+      ],
+      "manual_criteria": [
+        "Overlapping textured regions are visible in every view.",
+        "Camera motion has parallax rather than only in-place rotation.",
+        "Object or room structure should be easy to judge by eye."
+      ]
+    },
+    {
+      "id": "static_collection_medium",
+      "source_type": "images",
+      "target_file_count": "20-50",
+      "status": "needs_selection",
+      "purpose": "Medium image collection for Fast3R speed and Spann3R consistency tests.",
+      "required_models": [
+        "spann3r",
+        "fast3r"
+      ],
+      "optional_models": [
+        "mast3r"
+      ],
+      "manual_criteria": [
+        "Images should cover a connected scene or object.",
+        "Sequence should not contain large unrelated jumps.",
+        "Expected output should be inspectable as one point cloud."
+      ]
+    },
+    {
+      "id": "video_static_short",
+      "source_type": "video",
+      "target_duration_seconds": "5-20",
+      "status": "seeded_from_job_20260420-222928",
+      "seed_job_id": "20260420-222928",
+      "purpose": "Short mostly-static video baseline for MonST3R, Align3R, and CUT3R.",
+      "required_models": [
+        "monst3r",
+        "align3r",
+        "cut3r"
+      ],
+      "optional_models": [
+        "spann3r",
+        "fast3r"
+      ],
+      "manual_criteria": [
+        "Camera should translate enough to create parallax.",
+        "Background should be stable and textured.",
+        "Dynamic objects should not dominate the frame."
+      ]
+    },
+    {
+      "id": "video_dynamic_short",
+      "source_type": "video",
+      "target_duration_seconds": "5-20",
+      "status": "needs_selection",
+      "purpose": "Dynamic-scene comparison for MonST3R, Align3R, and CUT3R.",
+      "required_models": [
+        "monst3r",
+        "align3r",
+        "cut3r"
+      ],
+      "optional_models": [],
+      "manual_criteria": [
+        "At least one moving object or person is visible.",
+        "Camera motion should remain smooth enough for geometry recovery.",
+        "Scene should still contain stable background structure."
+      ]
+    },
+    {
+      "id": "video_hard_case",
+      "source_type": "video",
+      "target_duration_seconds": "5-20",
+      "status": "needs_selection",
+      "purpose": "Failure-mode sample for dynamic/video models.",
+      "required_models": [
+        "monst3r",
+        "align3r",
+        "cut3r"
+      ],
+      "optional_models": [],
+      "manual_criteria": [
+        "May include weak texture, reflective surfaces, fast motion, or occlusion.",
+        "Should be hard but not completely impossible to inspect.",
+        "Used for failure explanation rather than best showcase."
+      ]
+    }
+  ],
+  "scoring": {
+    "engineering": [
+      "setup_time",
+      "weight_download_difficulty",
+      "runtime_seconds",
+      "peak_gpu_memory_mb",
+      "runner_integration_difficulty"
+    ],
+    "result_quality": [
+      "structure_completeness_1_to_5",
+      "trajectory_stability_1_to_5",
+      "noise_level_1_to_5",
+      "dynamic_handling_1_to_5",
+      "depth_temporal_consistency_1_to_5",
+      "presentation_usability_1_to_5"
+    ],
+    "platform": [
+      "noninteractive_runner",
+      "status_json",
+      "scene_meta_json",
+      "result_summary",
+      "frontend_core_preview"
+    ]
+  }
+}

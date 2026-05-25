@@ -1,0 +1,48 @@
+name: DUSt3R
+family: dust3r
+description: "Dense Unconstrained Stereo 3D Reconstruction"
+paper: "https://arxiv.org/abs/2312.14132"
+type: static_multiview
+
+repo:
+  url: https://github.com/naver/dust3r
+  branch: main
+  server_path: /hdd3/kykt26/code/dust3r-main
+
+environment:
+  conda_env: dust3r
+  python: "3.11"
+  torch: "2.5.1+cu121"
+  cuda_arch: "7.5"
+
+checkpoints:
+  - name: DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
+    path: /hdd3/kykt26/models/
+    size_gb: 1.3
+
+build_steps: []
+
+smoke_test:
+  script: "python -c \"from dust3r.model import AsymmetricCroCo3DStereo; print('OK')\""
+  expected: "OK"
+
+runner:
+  script: runners/dust3r_runner.py
+  conda_env: dust3r
+  default_params:
+    image_size: 512
+    niter: 300
+    scene_graph: "complete"
+    lr: 0.01
+    batch_size: 1
+
+output_contract:
+  required:
+    - matches.png
+    - pointcloud.ply
+    - scene_meta.json
+  optional:
+    - runner.log
+
+status: integrated
+priority: baseline

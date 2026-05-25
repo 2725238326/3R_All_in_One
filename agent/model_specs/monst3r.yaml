@@ -1,0 +1,68 @@
+name: MonST3R
+family: dust3r
+description: "Motion DUSt3R - Dynamic/video 3D reconstruction"
+paper: "https://arxiv.org/abs/2410.03825"
+type: dynamic_video
+
+repo:
+  url: https://github.com/Junyi42/monst3r
+  branch: main
+  commit: 574cc77
+  submodules: [croco, viser]
+  server_path: /hdd3/kykt26/code/monst3r
+
+environment:
+  conda_env: monst3r
+  conda_clone_from: dust3r
+  python: "3.11"
+  torch: "2.5.1+cu121"
+  cuda_arch: "7.5"
+  extra_pip:
+    - gradio==4.44.1
+    - pyglet==2.0.20
+  exclude_pip: [torch, torchvision]
+
+checkpoints:
+  - name: MonST3R_PO-TA-S-W_ViTLarge_BaseDecoder_512_dpt.pth
+    path: checkpoints/
+    size_gb: 2.1
+  - name: Tartan-C-T-TSKH-spring540x960-M.pth
+    path: third_party/RAFT/models/
+    size_gb: 0.2
+  - name: sam2.1_hiera_large.pt
+    path: third_party/sam2/checkpoints/
+    size_gb: 0.9
+
+build_steps:
+  - cmd: "cd croco/models/curope && python setup.py build_ext --inplace"
+    env:
+      TORCH_CUDA_ARCH_LIST: "7.5"
+      CUDA_HOME: "/usr/local/cuda-12.6"
+
+smoke_test:
+  script: "python -c \"from dust3r.model import AsymmetricCroCo3DStereo; print('OK')\""
+  expected: "OK"
+
+runner:
+  script: runners/monst3r_runner.py
+  conda_env: monst3r
+  default_params:
+    image_size: 512
+    num_frames: 48
+    fps: 0
+    window_size: 24
+    batch_size: 1
+
+output_contract:
+  required:
+    - scene.glb
+    - pred_traj.txt
+    - pred_intrinsics.txt
+    - scene_meta.json
+  optional:
+    - "frame_*.png"
+    - "dynamic_mask_*.png"
+    - "conf_*.npy"
+
+status: integrated
+priority: high
