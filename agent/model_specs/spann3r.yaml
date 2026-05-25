@@ -1,49 +1,182 @@
-name: Spann3R
-family: dust3r
-description: "Spatial Memory Network for 3D Reconstruction"
-paper: "https://arxiv.org/abs/2410.10611"
-type: spatial_memory
+# ═══════════════════════════════════════════════════════════════
+# Spann3R Model Blueprint
+# Spatial Memory 多图重建，直接输出全局坐标点云
+# ═══════════════════════════════════════════════════════════════
 
+# ─────────────── 身份标签 ───────────────
+name: Spann3R
+key: spann3r
+family: dust3r
+version: "main@latest"
+paper:
+  title: "Spann3R: Visual 3D Reconstruction with a Spatial Memory"
+  url: https://arxiv.org/abs/2410.10611
+  venue: arXiv 2024
+  year: 2024
+
+# ─────────────── 能力标签 ───────────────
+tags:
+  type: spatial_memory
+  input: [images, video]
+  output: [pointcloud, camera_poses]
+  paradigm: global_memory
+  scene: static
+
+# ─────────────── 源码配置 ───────────────
 repo:
   url: https://github.com/HengyiWang/spann3r
   branch: main
+  commit: ""
+  submodules: [croco]
   server_path: /hdd3/kykt26/code/spann3r
 
+# ─────────────── 环境配置 ───────────────
 environment:
   conda_env: spann3r
   python: "3.11"
   torch: "2.5.1+cu121"
+  cuda_toolkit: /usr/local/cuda-12.6
   cuda_arch: "7.5"
+  create_strategy: fresh
+  clone_source: ""
+  pip_requirements: requirements.txt
+  extra_pip: []
+  exclude_pip: []
+  system_deps: []
 
+# ─────────────── 权重/检查点 ───────────────
 checkpoints:
   - name: DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
     path: checkpoints/
+    source: huggingface
+    url: https://huggingface.co/naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt
     size_gb: 1.3
+    hash: ""
+    required: true
   - name: spann3r.pth
     path: checkpoints/
+    source: huggingface
+    url: ""
     size_gb: 1.3
+    hash: ""
+    required: true
 
+# ─────────────── 编译步骤 ───────────────
 build_steps:
-  - cmd: "cd croco/models/curope && python setup.py build_ext --inplace"
+  - name: compile_curope
+    cmd: "python setup.py build_ext --inplace"
+    cwd: croco/models/curope
     env:
       TORCH_CUDA_ARCH_LIST: "7.5"
       CUDA_HOME: "/usr/local/cuda-12.6"
+    verify: "ls croco/models/curope/curope*.so"
+    notes: "TITAN RTX sm75; 编译成功后 s00567 官方 demo 可通过"
+
+# ─────────────── 资源需求 ───────────────
+resources:
+  gpu_memory_gb: 14.0
+  ram_gb: 16.0
+  disk_gb: 6.0
+  max_frames: ~          # 输入为多图，非视频帧限
+  batch_size_limit: 1
+
+# ─────────────── 健康检查 ───────────────
+health_checks:
+  - name: spann3r_import
+    type: import
+    command: "python -c \"from spann3r.model import Spann3R; print('IMPORT_OK')\""
+    expected: "IMPORT_OK"
+    critical: true
+  - name: curope_cuda_kernel
+    type: cuda_kernel
+    command: "python -c \"from croco.models.curope import cuRoPE2D; r=cuRoPE2D(); print('CUROPE_OK')\""
+    expected: "CUROPE_OK"
+    critical: true
+  - name: dust3r_base_ckpt
+    type: file_exists
+    command: "test -f checkpoints/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
+    expected: ""
+    critical: true
+  - name: spann3r_ckpt
+    type: file_exists
+    command: "test -f checkpoints/spann3r.pth"
+    expected: ""
+    critical: true
 
 smoke_test:
-  script: "python -c \"from spann3r.model import Spann3R; print('OK')\""
+  script: "python -c \"from spann3r.model import Spann3R; from croco.models.curope import cuRoPE2D; print('OK')\""
+  timeout_sec: 120
   expected: "OK"
+  output_files: []
 
+# ─────────────── Runner 配置 ───────────────
 runner:
   script: runners/spann3r_runner.py
   conda_env: spann3r
+  entry_pattern: spann3r_runner.py
   default_params:
     image_size: 512
     kf_every: 5
+  param_tiers:
+    fast:
+      image_size: 224
+      kf_every: 10
+    standard:
+      image_size: 512
+      kf_every: 5
+    enhanced:
+      image_size: 512
+      kf_every: 3
 
+# ─────────────── 输出合同 ───────────────
 output_contract:
   required:
-    - pointcloud.ply
-    - scene_meta.json
+    - key: pointcloud
+      pattern: "pointcloud.ply"
+      type: ply
+      description: "Global-frame point cloud from spatial memory"
+    - key: scene_meta
+      pattern: "scene_meta.json"
+      type: json
+      description: "Model/run metadata"
+  optional:
+    - key: transforms
+      pattern: "transforms.json"
+      type: json
+    - key: log
+      pattern: "runner.log"
+      type: txt
+  scene_meta:
+    - field: model
+      type: str
+    - field: num_images
+      type: int
+    - field: num_points
+      type: int
+    - field: duration_sec
+      type: float
 
+# ─────────────── 已知问题 ───────────────
+known_issues:
+  - id: spann3r-001
+    description: "官方 README 推荐 PyTorch 2.3.0 + CUDA 11.8，但实测 2.5.1+cu121 正常"
+    workaround: "使用当前 env 即可"
+    resolved: true
+    resolved_date: "2026-04-25"
+  - id: spann3r-002
+    description: "Open3D 版本敏感，某些版本导致可视化崩溃"
+    workaround: "使用 open3d==0.17.0"
+    resolved: true
+    resolved_date: "2026-04-25"
+
+# ─────────────── 兼容矩阵 ───────────────
+compatibility:
+  gpu_models: ["TITAN RTX"]
+  os: ["Ubuntu 20.04"]
+  glibc_min: "2.31"
+  driver_min: "535"
+
+# ─────────────── 状态 ───────────────
 status: integrated
 priority: high
+last_verified: "2026-04-25"

@@ -1,42 +1,150 @@
-name: MASt3R
-family: dust3r
-description: "Matching And Stereo 3D Reconstruction"
-paper: "https://arxiv.org/abs/2406.09756"
-type: static_matching
+# ═══════════════════════════════════════════════════════════════
+# MASt3R Model Blueprint
+# DUSt3R 的静态多图匹配增强版，带 local feature matching
+# ═══════════════════════════════════════════════════════════════
 
+# ─────────────── 身份标签 ───────────────
+name: MASt3R
+key: mast3r
+family: dust3r
+version: "main@latest"
+paper:
+  title: "MASt3R: Grounding Image Matching in 3D with MASt3R"
+  url: https://arxiv.org/abs/2406.09756
+  venue: arXiv 2024
+  year: 2024
+
+# ─────────────── 能力标签 ───────────────
+tags:
+  type: static_matching
+  input: [images, image_pairs]
+  output: [pointcloud, matches, depth, camera_poses]
+  paradigm: pairwise
+  scene: static
+
+# ─────────────── 源码配置 ───────────────
 repo:
   url: https://github.com/naver/mast3r
   branch: main
+  commit: ""
+  submodules: [dust3r]
   server_path: /hdd3/kykt26/code/mast3r
 
+# ─────────────── 环境配置 ───────────────
 environment:
-  conda_env: dust3r
+  conda_env: dust3r          # 与 DUSt3R 共享 env
   python: "3.11"
   torch: "2.5.1+cu121"
+  cuda_toolkit: /usr/local/cuda-12.6
+  cuda_arch: "7.5"
+  create_strategy: fresh     # env 由 dust3r 首次创建
+  clone_source: ""
+  pip_requirements: requirements.txt
+  extra_pip: []
+  exclude_pip: []
+  system_deps: []
 
+# ─────────────── 权重/检查点 ───────────────
 checkpoints:
   - name: MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth
     path: /hdd3/kykt26/models/
+    source: huggingface
+    url: https://huggingface.co/naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric
     size_gb: 1.4
+    hash: ""
+    required: true
 
+# ─────────────── 编译步骤 ───────────────
 build_steps: []
+# MASt3R 不需要额外编译，共享 dust3r env
+
+# ─────────────── 资源需求 ───────────────
+resources:
+  gpu_memory_gb: 10.0
+  ram_gb: 16.0
+  disk_gb: 5.0
+  max_frames: ~
+  batch_size_limit: 1
+
+# ─────────────── 健康检查 ───────────────
+health_checks:
+  - name: mast3r_import
+    type: import
+    command: "python -c \"from mast3r.model import AsymmetricMASt3R; print('IMPORT_OK')\""
+    expected: "IMPORT_OK"
+    critical: true
+  - name: checkpoint_exists
+    type: file_exists
+    command: "test -f /hdd3/kykt26/models/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth"
+    expected: ""
+    critical: true
 
 smoke_test:
   script: "python -c \"from mast3r.model import AsymmetricMASt3R; print('OK')\""
+  timeout_sec: 60
   expected: "OK"
+  output_files: []
 
+# ─────────────── Runner 配置 ───────────────
 runner:
   script: runners/mast3r_runner.py
   conda_env: dust3r
+  entry_pattern: mast3r_runner.py
   default_params:
     image_size: 512
     niter: 300
+    scene_graph: complete
+    lr: 0.01
+    batch_size: 1
+  param_tiers:
+    fast:
+      image_size: 224
+      niter: 100
+    standard:
+      image_size: 512
+      niter: 300
+    enhanced:
+      image_size: 512
+      niter: 500
 
+# ─────────────── 输出合同 ───────────────
 output_contract:
   required:
-    - matches.png
-    - pointcloud.ply
-    - scene_meta.json
+    - key: pointcloud
+      pattern: "pointcloud.ply"
+      type: ply
+      description: "Dense 3D point cloud with per-point features"
+    - key: matches
+      pattern: "matches.png"
+      type: png
+      description: "Dense matching visualization"
+    - key: scene_meta
+      pattern: "scene_meta.json"
+      type: json
+      description: "Model/run metadata"
+  optional:
+    - key: log
+      pattern: "runner.log"
+      type: txt
+  scene_meta:
+    - field: model
+      type: str
+    - field: num_points
+      type: int
+    - field: duration_sec
+      type: float
 
+# ─────────────── 已知问题 ───────────────
+known_issues: []
+
+# ─────────────── 兼容矩阵 ───────────────
+compatibility:
+  gpu_models: ["TITAN RTX"]
+  os: ["Ubuntu 20.04"]
+  glibc_min: "2.31"
+  driver_min: "535"
+
+# ─────────────── 状态 ───────────────
 status: integrated
 priority: high
+last_verified: "2026-04-20"

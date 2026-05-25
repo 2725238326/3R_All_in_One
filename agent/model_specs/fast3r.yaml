@@ -1,38 +1,38 @@
 # ═══════════════════════════════════════════════════════════════
-# DUSt3R Model Blueprint
-# 基础 pairwise 点云重建，所有 3R 家族的起源模型
+# Fast3R Model Blueprint
+# 多图一次前向，1000+ 图片级别快速 3D 重建
 # ═══════════════════════════════════════════════════════════════
 
 # ─────────────── 身份标签 ───────────────
-name: DUSt3R
-key: dust3r
+name: Fast3R
+key: fast3r
 family: dust3r
 version: "main@latest"
 paper:
-  title: "DUSt3R: Geometric 3D Vision Made Easy"
-  url: https://arxiv.org/abs/2312.14132
-  venue: CVPR 2024
-  year: 2024
+  title: "Fast3R: Towards 3D Reconstruction of 1000+ Images in One Forward Pass"
+  url: https://arxiv.org/abs/2501.13928
+  venue: arXiv 2025
+  year: 2025
 
 # ─────────────── 能力标签 ───────────────
 tags:
-  type: static_multiview
-  input: [images, image_pairs]
-  output: [pointcloud, depth, camera_poses]
-  paradigm: pairwise
+  type: fast_multiview
+  input: [images, video]
+  output: [pointcloud, camera_poses, confidence]
+  paradigm: feedforward
   scene: static
 
 # ─────────────── 源码配置 ───────────────
 repo:
-  url: https://github.com/naver/dust3r
+  url: https://github.com/mli0603/Fast3R
   branch: main
   commit: ""
-  submodules: [croco]
-  server_path: /hdd3/kykt26/code/dust3r-main
+  submodules: []
+  server_path: /hdd3/kykt26/code/fast3r
 
 # ─────────────── 环境配置 ───────────────
 environment:
-  conda_env: dust3r
+  conda_env: fast3r
   python: "3.11"
   torch: "2.5.1+cu121"
   cuda_toolkit: /usr/local/cuda-12.6
@@ -46,66 +46,68 @@ environment:
 
 # ─────────────── 权重/检查点 ───────────────
 checkpoints:
-  - name: DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
-    path: /hdd3/kykt26/models/
+  - name: Fast3R_ViT_Large_512/model.safetensors
+    path: /hdd3/kykt26/models/fast3r/
     source: huggingface
-    url: https://huggingface.co/naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt
-    size_gb: 1.3
+    url: https://huggingface.co/jedyang97/Fast3R_ViT_Large_512
+    size_gb: 1.4
     hash: ""
     required: true
 
 # ─────────────── 编译步骤 ───────────────
 build_steps: []
-# DUSt3R 本身不需要 curope 编译（MASt3R 共享此 env 时才需要）
+# Fast3R 不需要 curope（官方明确要求不要装 DUSt3R 的 cuROPE）
 
 # ─────────────── 资源需求 ───────────────
 resources:
-  gpu_memory_gb: 8.0
-  ram_gb: 16.0
+  gpu_memory_gb: 16.0     # 取决于输入图片数量
+  ram_gb: 32.0
   disk_gb: 5.0
-  max_frames: ~       # 不适用（静态图片）
+  max_frames: ~           # 理论支持 1000+，TITAN RTX 受限
   batch_size_limit: 1
 
 # ─────────────── 健康检查 ───────────────
 health_checks:
-  - name: dust3r_import
+  - name: fast3r_import
     type: import
-    command: "python -c \"from dust3r.model import AsymmetricCroCo3DStereo; print('IMPORT_OK')\""
+    command: "python -c \"from fast3r.dust3r.model import AsymmetricCroCo3DStereo; print('IMPORT_OK')\""
     expected: "IMPORT_OK"
     critical: true
   - name: checkpoint_exists
     type: file_exists
-    command: "test -f /hdd3/kykt26/models/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth"
+    command: "test -f /hdd3/kykt26/models/fast3r/Fast3R_ViT_Large_512/model.safetensors"
     expected: ""
     critical: true
+  - name: no_curope_conflict
+    type: command
+    command: "python -c \"import importlib.util; assert importlib.util.find_spec('curope') is None; print('NO_CUROPE')\""
+    expected: "NO_CUROPE"
+    critical: false     # 不致命但会影响结果质量
 
 smoke_test:
-  script: "python -c \"from dust3r.model import AsymmetricCroCo3DStereo; print('OK')\""
+  script: "python -c \"from fast3r.dust3r.model import AsymmetricCroCo3DStereo; print('OK')\""
   timeout_sec: 60
   expected: "OK"
   output_files: []
 
 # ─────────────── Runner 配置 ───────────────
 runner:
-  script: runners/dust3r_runner.py
-  conda_env: dust3r
-  entry_pattern: dust3r_runner.py
+  script: runners/fast3r_runner.py
+  conda_env: fast3r
+  entry_pattern: fast3r_runner.py
   default_params:
     image_size: 512
-    niter: 300
-    scene_graph: complete
-    lr: 0.01
-    batch_size: 1
+    attention_backend: pytorch_naive    # TITAN RTX sm75 不支持 FlashAttention
   param_tiers:
     fast:
       image_size: 224
-      niter: 100
+      attention_backend: pytorch_naive
     standard:
       image_size: 512
-      niter: 300
+      attention_backend: pytorch_naive
     enhanced:
       image_size: 512
-      niter: 500
+      attention_backend: pytorch_naive
 
 # ─────────────── 输出合同 ───────────────
 output_contract:
@@ -113,29 +115,49 @@ output_contract:
     - key: pointcloud
       pattern: "pointcloud.ply"
       type: ply
-      description: "Global aligned point cloud"
-    - key: matches
-      pattern: "matches.png"
-      type: png
-      description: "Feature matching visualization"
+      description: "Feedforward reconstructed point cloud"
+    - key: camera_poses
+      pattern: "camera_poses.json"
+      type: json
+      description: "Estimated camera poses for all input images"
     - key: scene_meta
       pattern: "scene_meta.json"
       type: json
       description: "Model/run metadata"
   optional:
+    - key: confidence
+      pattern: "confidence_summary.json"
+      type: json
+    - key: metadata
+      pattern: "metadata.json"
+      type: json
     - key: log
       pattern: "runner.log"
       type: txt
   scene_meta:
     - field: model
       type: str
+    - field: num_images
+      type: int
     - field: num_points
       type: int
+    - field: attention_backend
+      type: str
     - field: duration_sec
       type: float
 
 # ─────────────── 已知问题 ───────────────
-known_issues: []
+known_issues:
+  - id: fast3r-001
+    description: "TITAN RTX (sm75) 不支持 FlashAttention，必须用 pytorch_naive"
+    workaround: "default_params 中设 attention_backend=pytorch_naive"
+    resolved: true
+    resolved_date: "2026-04-25"
+  - id: fast3r-002
+    description: "不能安装 DUSt3R 的 cuROPE，否则会影响重建结果"
+    workaround: "使用独立 env，不复用 dust3r/mast3r"
+    resolved: true
+    resolved_date: "2026-04-25"
 
 # ─────────────── 兼容矩阵 ───────────────
 compatibility:
@@ -146,5 +168,5 @@ compatibility:
 
 # ─────────────── 状态 ───────────────
 status: integrated
-priority: baseline
-last_verified: "2026-04-20"
+priority: high
+last_verified: "2026-04-25"

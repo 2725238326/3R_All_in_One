@@ -1,189 +1,191 @@
 # ═══════════════════════════════════════════════════════════════
-# MonST3R Model Blueprint
-# 视频/动态场景 3D 重建，输出 GLB mesh + 轨迹 + 动态 mask
+# CUT3R Model Blueprint
+# 在线持续更新重建，streaming/有状态模型
 # ═══════════════════════════════════════════════════════════════
 
 # ─────────────── 身份标签 ───────────────
-name: MonST3R
-key: monst3r
+name: CUT3R
+key: cut3r
 family: dust3r
-version: "main@574cc77"
+version: "main@latest"
 paper:
-  title: "MonST3R: A Simple Approach for Estimating Geometry in the Presence of Motion"
-  url: https://arxiv.org/abs/2410.03825
-  venue: arXiv 2024
-  year: 2024
+  title: "CUT3R: Continuous Unconstrained Tracking for 3D Reconstruction"
+  url: https://arxiv.org/abs/2504.00192
+  venue: arXiv 2025
+  year: 2025
 
 # ─────────────── 能力标签 ───────────────
 tags:
-  type: dynamic_video
+  type: online_persistent
   input: [video, images]
-  output: [mesh, trajectory, depth, camera_poses, masks, intrinsics]
-  paradigm: pairwise
-  scene: dynamic
+  output: [pointcloud, camera_poses, state]
+  paradigm: streaming
+  scene: both
 
 # ─────────────── 源码配置 ───────────────
 repo:
-  url: https://github.com/Junyi42/monst3r
+  url: https://github.com/CUT3R/CUT3R
   branch: main
-  commit: "574cc77"
-  submodules: [croco, viser]
-  server_path: /hdd3/kykt26/code/monst3r
+  commit: ""
+  submodules: []
+  server_path: /hdd3/kykt26/code/cut3r
 
 # ─────────────── 环境配置 ───────────────
 environment:
-  conda_env: monst3r
+  conda_env: cut3r
   python: "3.11"
   torch: "2.5.1+cu121"
   cuda_toolkit: /usr/local/cuda-12.6
   cuda_arch: "7.5"
-  create_strategy: clone_from
-  clone_source: dust3r
+  create_strategy: fresh
+  clone_source: ""
   pip_requirements: requirements.txt
   extra_pip:
-    - gradio==4.44.1
-    - pyglet==2.0.20
-  exclude_pip: [torch, torchvision, torchaudio]
+    - gsplat
+    - evo
+    - open3d
+  exclude_pip: []
   system_deps: []
 
 # ─────────────── 权重/检查点 ───────────────
 checkpoints:
-  - name: MonST3R_PO-TA-S-W_ViTLarge_BaseDecoder_512_dpt.pth
+  - name: cut3r_224_linear_4.pth
     path: checkpoints/
-    source: huggingface
-    url: https://huggingface.co/Junyi42/MonST3R
-    size_gb: 2.1
-    hash: ""
-    required: true
-  - name: Tartan-C-T-TSKH-spring540x960-M.pth
-    path: third_party/RAFT/models/
     source: url
     url: ""
-    size_gb: 0.2
+    size_gb: 1.2
     hash: ""
     required: true
-  - name: sam2.1_hiera_large.pt
-    path: third_party/sam2/checkpoints/
-    source: huggingface
-    url: https://huggingface.co/facebook/sam2.1-hiera-large
-    size_gb: 0.9
+  - name: cut3r_512_dpt_4_64.pth
+    path: checkpoints/
+    source: url
+    url: ""
+    size_gb: 1.3
     hash: ""
-    required: false    # 仅动态 mask 功能需要
+    required: true
 
 # ─────────────── 编译步骤 ───────────────
 build_steps:
   - name: compile_curope
     cmd: "python setup.py build_ext --inplace"
-    cwd: croco/models/curope
+    cwd: src/croco/models/curope       # 注意：CUT3R 的 curope 在 src/ 下
     env:
       TORCH_CUDA_ARCH_LIST: "7.5"
       CUDA_HOME: "/usr/local/cuda-12.6"
-    verify: "ls croco/models/curope/curope*.so"
-    notes: "必须匹配当前 env 的 torch 和系统 CUDA；TITAN RTX = sm75"
+    verify: "ls src/croco/models/curope/curope*.so"
+    notes: |
+      2026-05-03 从零编译：
+      - 原始 repo 没有 build 目录，没有 .so
+      - 必须在 src/croco/models/curope/ 下执行（不是根目录的 croco/）
+      - 新 .so 时间戳 5月3 19:23
 
 # ─────────────── 资源需求 ───────────────
 resources:
-  gpu_memory_gb: 18.0      # 512 分辨率 48 帧时接近峰值
+  gpu_memory_gb: 18.0      # 显存随帧数持续增长
   ram_gb: 32.0
   disk_gb: 8.0
-  max_frames: 96           # TITAN RTX 24GB 上限
+  max_frames: 100          # 24GB 显存预估上限
   batch_size_limit: 1
 
 # ─────────────── 健康检查 ───────────────
 health_checks:
-  - name: monst3r_import
-    type: import
-    command: "python -c \"from dust3r.model import AsymmetricCroCo3DStereo; print('IMPORT_OK')\""
-    expected: "IMPORT_OK"
-    critical: true
-  - name: curope_cuda_kernel
+  - name: cut3r_curope_import
     type: cuda_kernel
-    command: "python -c \"from croco.models.curope import cuRoPE2D; r=cuRoPE2D(); print('CUROPE_OK')\""
+    command: "python -c \"from src.croco.models.curope import cuRoPE2D; r=cuRoPE2D(); print('CUROPE_OK')\""
     expected: "CUROPE_OK"
     critical: true
-  - name: checkpoint_main
+  - name: ckpt_224
     type: file_exists
-    command: "test -f checkpoints/MonST3R_PO-TA-S-W_ViTLarge_BaseDecoder_512_dpt.pth"
+    command: "test -f checkpoints/cut3r_224_linear_4.pth"
     expected: ""
     critical: true
-  - name: raft_weights
+  - name: ckpt_512
     type: file_exists
-    command: "test -f third_party/RAFT/models/Tartan-C-T-TSKH-spring540x960-M.pth"
+    command: "test -f checkpoints/cut3r_512_dpt_4_64.pth"
     expected: ""
     critical: true
+  - name: gsplat_import
+    type: import
+    command: "python -c \"import gsplat; print('GSPLAT_OK')\""
+    expected: "GSPLAT_OK"
+    critical: false          # gsplat 只在特定可视化模式需要
 
 smoke_test:
-  script: "python -c \"from dust3r.model import AsymmetricCroCo3DStereo; from croco.models.curope import cuRoPE2D; print('OK')\""
+  script: "python -c \"from src.croco.models.curope import cuRoPE2D; r=cuRoPE2D(); print('OK')\""
   timeout_sec: 120
   expected: "OK"
   output_files: []
 
 # ─────────────── Runner 配置 ───────────────
 runner:
-  script: runners/monst3r_runner.py
-  conda_env: monst3r
-  entry_pattern: monst3r_runner.py
+  script: runners/cut3r_runner.py
+  conda_env: cut3r
+  entry_pattern: cut3r_runner.py
   default_params:
     image_size: 512
-    num_frames: 48
-    fps: 0              # 0 = auto detect
-    window_size: 24
-    batch_size: 1
+    model_path: checkpoints/cut3r_512_dpt_4_64.pth
+    vis_threshold: 1.5
+    mode: online
   param_tiers:
     fast:
       image_size: 224
-      num_frames: 24
+      model_path: checkpoints/cut3r_224_linear_4.pth
     standard:
       image_size: 512
-      num_frames: 48
+      model_path: checkpoints/cut3r_512_dpt_4_64.pth
     enhanced:
       image_size: 512
-      num_frames: 96
+      model_path: checkpoints/cut3r_512_dpt_4_64.pth
+      vis_threshold: 1.0
 
 # ─────────────── 输出合同 ───────────────
 output_contract:
   required:
-    - key: mesh
-      pattern: "scene.glb"
-      type: glb
-      description: "3D scene mesh"
-    - key: trajectory
-      pattern: "pred_traj.txt"
-      type: txt
-      description: "Predicted camera trajectory (Nx7 quaternion+translation)"
-    - key: intrinsics
-      pattern: "pred_intrinsics.txt"
-      type: txt
-      description: "Predicted per-frame intrinsics"
+    - key: pointcloud
+      pattern: "pointcloud.ply"
+      type: ply
+      description: "Online-accumulated 3D point cloud"
     - key: scene_meta
       pattern: "scene_meta.json"
       type: json
       description: "Model/run metadata"
   optional:
-    - key: frame_previews
-      pattern: "frame_*.png"
-      type: png
-    - key: dynamic_masks
-      pattern: "dynamic_mask_*.png"
-      type: png
-    - key: confidence
-      pattern: "conf_*.npy"
-      type: npy
+    - key: camera_poses
+      pattern: "camera_poses.json"
+      type: json
+    - key: state_dump
+      pattern: "state_*.pth"
+      type: pth
+    - key: log
+      pattern: "runner.log"
+      type: txt
   scene_meta:
     - field: model
       type: str
-    - field: num_frames
-      type: int
     - field: image_size
       type: int
+    - field: num_frames
+      type: int
+    - field: mode
+      type: str
     - field: duration_sec
       type: float
 
 # ─────────────── 已知问题 ───────────────
 known_issues:
-  - id: monst3r-001
-    description: "window_wise=true 时 24GB 显存可能不够 96 帧"
-    workaround: "使用 window_size=24 或减少 num_frames"
+  - id: cut3r-001
+    description: "curope 路径在 src/ 下，与其他模型不同"
+    workaround: "build_steps.cwd 设为 src/croco/models/curope"
+    resolved: true
+    resolved_date: "2026-05-03"
+  - id: cut3r-002
+    description: "显存随帧数持续增长，长序列可能 OOM"
+    workaround: "控制 max_frames 或分段处理"
+    resolved: false
+    resolved_date: ""
+  - id: cut3r-003
+    description: "Runner 尚未编写"
+    workaround: "待完成 cut3r_runner.py，参考官方 demo.py"
     resolved: false
     resolved_date: ""
 
@@ -195,6 +197,6 @@ compatibility:
   driver_min: "535"
 
 # ─────────────── 状态 ───────────────
-status: integrated
+status: env_ready
 priority: high
-last_verified: "2026-04-20"
+last_verified: "2026-05-03"
