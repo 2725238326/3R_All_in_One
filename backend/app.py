@@ -38,7 +38,6 @@ from job_store import (
     EVALUATION_SCORE_FIELDS,
     EVALUATION_SCORE_MAX,
     EVALUATION_SCORE_MIN,
-    ROOT,
     clear_job_runtime,
     create_job,
     duplicate_job,
@@ -74,6 +73,7 @@ from model_registry import (
     get_model_spec,
 )
 from ssh_runner import ServerConfig, cancel_remote_job, run_remote_job
+from runtime_paths import backend_root, bundle_root, data_root
 from job_scheduler import JobPriority, scheduler
 from resource_monitor import monitor as resource_monitor
 from metrics_calculator import compute_job_metrics
@@ -95,7 +95,7 @@ development_store = DevelopmentStore()
 WS_ALL_JOBS_KEY = "__all__"
 
 
-app = FastAPI(title="KYKT Vision UI", version="0.3.0")
+app = FastAPI(title="3R All-in-One", version="0.4.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -210,21 +210,25 @@ async def _recover_orphan_running_jobs() -> None:
             ", ".join(rehydrated),
         )
 
-templates = Jinja2Templates(directory=str(ROOT / "templates"))
-templates.env.globals["asset_version"] = "20260410-2130"
-SAMPLES_MANIFEST_PATH = ROOT / "samples_manifest.json"
-DEPLOYMENT_SCRIPT_PATH = ROOT.parents[2] / "tools" / "check_3r_remote.ps1"
+_BACKEND_ROOT = backend_root()
+_BUNDLE_ROOT = bundle_root()
+_DATA_ROOT = data_root()
 
-CLIENT_DIST_DIR = ROOT / "client" / "dist"
+templates = Jinja2Templates(directory=str(_BACKEND_ROOT / "templates"))
+templates.env.globals["asset_version"] = "20260410-2130"
+SAMPLES_MANIFEST_PATH = _BUNDLE_ROOT / "samples" / "samples_manifest.json"
+DEPLOYMENT_SCRIPT_PATH = _BUNDLE_ROOT / "tools" / "check_3r_remote.ps1"
+
+CLIENT_DIST_DIR = _BUNDLE_ROOT / "client" / "dist"
 CLIENT_INDEX_HTML = CLIENT_DIST_DIR / "index.html"
 CLIENT_ASSETS_DIR = CLIENT_DIST_DIR / "assets"
 REACT_CLIENT_AVAILABLE = CLIENT_INDEX_HTML.exists() and CLIENT_ASSETS_DIR.exists()
 
-(ROOT / "static").mkdir(parents=True, exist_ok=True)
-(ROOT / "local_jobs").mkdir(parents=True, exist_ok=True)
+(_BACKEND_ROOT / "static").mkdir(parents=True, exist_ok=True)
+(_DATA_ROOT / "local_jobs").mkdir(parents=True, exist_ok=True)
 
-app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
-app.mount("/local_jobs", StaticFiles(directory=str(ROOT / "local_jobs")), name="local_jobs")
+app.mount("/static", StaticFiles(directory=str(_BACKEND_ROOT / "static")), name="static")
+app.mount("/local_jobs", StaticFiles(directory=str(_DATA_ROOT / "local_jobs")), name="local_jobs")
 if REACT_CLIENT_AVAILABLE:
     # Vite-built React client. /assets serves chunked JS/CSS bundles; the SPA
     # entry point is delivered by the / and /jobs/{id} routes below.

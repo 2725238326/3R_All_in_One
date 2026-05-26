@@ -8,9 +8,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from runtime_paths import data_root, local_jobs_dir
 
-ROOT = Path(__file__).resolve().parent
-LOCAL_MODEL_REGISTRY_PATH = ROOT / "local_jobs" / "local_model_registry.json"
+
+# ROOT historically referred to the backend source directory; it now
+# points at the writable per-user data directory (see runtime_paths).
+# It is kept module-level for callers that ``from model_registry import ROOT``.
+ROOT = data_root()
+LOCAL_MODEL_REGISTRY_PATH = local_jobs_dir() / "local_model_registry.json"
 _LOCAL_MODEL_REGISTRY_LOCK = threading.RLock()
 
 

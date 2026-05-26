@@ -9,10 +9,19 @@ from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
 from model_registry import default_runner_for
+from runtime_paths import data_root, local_jobs_dir as _resolve_local_jobs_dir
 
 
-ROOT = Path(__file__).resolve().parent
-LOCAL_JOBS_DIR = ROOT / "local_jobs"
+# ROOT used to be ``Path(__file__).resolve().parent`` (i.e. the backend
+# source dir). It is re-exported for backward compatibility and now points
+# at the writable per-user data directory chosen by ``runtime_paths``:
+# in dev that is still ``backend/``, but in a frozen install it becomes
+# ``%LOCALAPPDATA%\3R All-in-One`` (or whatever ``KYKT_DATA_ROOT`` points
+# at). All historical consumers of ``ROOT`` (advisor, ssh_runner, ...)
+# only ever join writable subdirectories like ``settings/`` or
+# ``local_jobs/_advisor/``, so the new semantics are strictly more correct.
+ROOT = data_root()
+LOCAL_JOBS_DIR = _resolve_local_jobs_dir()
 _JOB_STORE_LOCK = threading.RLock()
 _JOB_UPDATE_LISTENERS: list[Callable[[JobRecord], None]] = []
 LOG_TAIL_READ_BYTES = 256 * 1024

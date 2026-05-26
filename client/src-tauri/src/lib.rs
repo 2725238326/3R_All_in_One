@@ -35,9 +35,11 @@ struct BackendStatus {
     log_path: Option<String>,
 }
 
+const SIDECAR_NAME: &str = "3r-backend";
+
 #[tauri::command]
 fn app_ready_message() -> &'static str {
-    "KYKT Vision Client desktop shell is ready."
+    "3R All-in-One desktop shell is ready."
 }
 
 #[tauri::command]
@@ -191,20 +193,48 @@ fn ensure_backend(app: &tauri::AppHandle) -> BackendStatus {
         };
     }
 
+    // Try sidecar exe first (PyInstaller --onefile bundle)
+    if let Some(sidecar_path) = find_sidecar_exe(app) {
+        match spawn_sidecar(&sidecar_path) {
+            Ok((child, log_path)) => {
+                if let Some(state) = app.try_state::<BackendProcess>() {
+                    if let Ok(mut guard) = state.0.lock() {
+                        *guard = Some(child);
+                    }
+                }
+
+                if wait_for_backend() {
+                    return BackendStatus {
+                        running: true,
+                        managed_by_tauri: true,
+                        message: "Backend started from bundled sidecar executable.".to_string(),
+                        backend_root: Some(sidecar_path.display().to_string()),
+                        log_path: Some(log_path.display().to_string()),
+                    };
+                }
+                // Sidecar started but not healthy - continue to try Python fallback
+            }
+            Err(_) => {
+                // Sidecar failed to spawn - continue to try Python fallback
+            }
+        }
+    }
+
+    // Fallback to Python + uvicorn
     let backend_root = match find_backend_root(app) {
         Ok(path) => path,
         Err(message) => {
             return BackendStatus {
                 running: false,
                 managed_by_tauri: false,
-                message,
+                message: format!("No sidecar found and {}", message),
                 backend_root: None,
                 log_path: None,
             }
         }
     };
 
-    match spawn_backend(&backend_root) {
+    match spawn_backend_python(&backend_root) {
         Ok((child, log_path)) => {
             if let Some(state) = app.try_state::<BackendProcess>() {
                 if let Ok(mut guard) = state.0.lock() {
@@ -338,6 +368,60 @@ fn is_backend_root(path: &Path) -> bool {
     path.join("app.py").exists() && path.join("job_store.py").exists()
 }
 
+/// Look for the bundled sidecar executable (PyInstaller --onefile build).
+/// Returns the path if found, None otherwise.
+fn find_sidecar_exe(app: &tauri::AppHandle) -> Option<PathBuf> {
+    // 1. Check resource directory (Tauri bundle location)
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        #[cfg(windows)]
+        let exe_name = format!("{SIDECAR_NAME}-x86_64-pc-windows-msvc.exe");
+        #[cfg(not(windows))]
+        let exe_name = SIDECAR_NAME.to_string();
+
+        let sidecar_path = resource_dir.join("binaries").join(&exe_name);
+        if sidecar_path.exists() {
+            return Some(sidecar_path);
+        }
+
+        // Also try without target triple
+        let simple_path = resource_dir.join("binaries").join(format!("{SIDECAR_NAME}.exe"));
+        if simple_path.exists() {
+            return Some(simple_path);
+        }
+    }
+
+    // 2. Check next to the executable (portable deployment)
+    if let Ok(exe) = env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            #[cfg(windows)]
+            let candidates = [
+                format!("{SIDECAR_NAME}-x86_64-pc-windows-msvc.exe"),
+                format!("{SIDECAR_NAME}.exe"),
+            ];
+            #[cfg(not(windows))]
+            let candidates = [SIDECAR_NAME.to_string()];
+
+            for name in &candidates {
+                let path = exe_dir.join(name);
+                if path.exists() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+
+    // 3. Development: check in dist/ folder relative to project
+    let manifest_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if let Some(project_root) = manifest_root.parent().and_then(|p| p.parent()) {
+        let dev_path = project_root.join("dist").join(format!("{SIDECAR_NAME}.exe"));
+        if dev_path.exists() {
+            return Some(dev_path);
+        }
+    }
+
+    None
+}
+
 fn find_backend_python(backend_root: &Path) -> Result<PathBuf, String> {
     if let Ok(explicit) = env::var("KYKT_BACKEND_PYTHON") {
         let path = PathBuf::from(explicit);
@@ -401,7 +485,54 @@ fn find_backend_python(backend_root: &Path) -> Result<PathBuf, String> {
     ))
 }
 
-fn spawn_backend(backend_root: &Path) -> Result<(Child, PathBuf), String> {
+fn spawn_sidecar(sidecar_path: &Path) -> Result<(Child, PathBuf), String> {
+    let log_dir = if let Ok(exe) = env::current_exe() {
+        exe.parent()
+            .map(|p| p.join("logs"))
+            .unwrap_or_else(|| PathBuf::from("logs"))
+    } else {
+        PathBuf::from("logs")
+    };
+    fs::create_dir_all(&log_dir)
+        .map_err(|err| format!("Failed to create sidecar log directory: {err}"))?;
+    let log_path = log_dir.join("backend.log");
+
+    let mut log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|err| format!("Failed to open sidecar log: {err}"))?;
+    writeln!(
+        log_file,
+        "\n=== 3R All-in-One sidecar start ({}) ===",
+        sidecar_path.display()
+    )
+    .map_err(|err| format!("Failed to write sidecar log: {err}"))?;
+
+    let stdout = Stdio::from(
+        log_file
+            .try_clone()
+            .map_err(|err| format!("Failed to clone sidecar log handle: {err}"))?,
+    );
+    let stderr = Stdio::from(log_file);
+
+    let mut command = Command::new(sidecar_path);
+    command
+        .env("BACKEND_HOST", BACKEND_HOST)
+        .env("BACKEND_PORT", BACKEND_PORT.to_string())
+        .stdout(stdout)
+        .stderr(stderr);
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    command
+        .spawn()
+        .map(|child| (child, log_path))
+        .map_err(|err| format!("Failed to start sidecar backend: {err}"))
+}
+
+fn spawn_backend_python(backend_root: &Path) -> Result<(Child, PathBuf), String> {
     let python = find_backend_python(backend_root)?;
     if !python.exists() {
         return Err(format!("Python interpreter not found: {}", python.display()));

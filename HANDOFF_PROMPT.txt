@@ -1,0 +1,67 @@
+═══════════════════════════════════════════════════════════════════════════
+  Agent Handoff Prompt — 3R All-in-One 项目（直接复制给另一个 Agent）
+═══════════════════════════════════════════════════════════════════════════
+
+你好。你正在接手 "3R All-in-One" 项目，工作根目录是：
+
+    E:\Demo\3R_All_in_One\3R_All_in_One
+
+【强制第一步 / 必须执行】
+1. 用 read_file 工具读完整的 AGENT_HANDOFF.md 文件：
+       E:\Demo\3R_All_in_One\3R_All_in_One\AGENT_HANDOFF.md
+   它包含完整的项目状态、文件清单、设计决策、约束、下一步计划。
+
+2. 在终端跑这两条命令验证现状：
+       python -m agent validate
+       python -m agent status
+   期望：7/7 valid，Total: 7 | Integrated: 5 | Env Ready: 2
+
+3. 读完前两步、确认验证通过后，再做任何修改。
+
+【上下文摘要 / 30 秒了解】
+• 这是从 E:\kykt\Coding\4.06\vision_ui 拆出来的独立项目
+• 技术栈：FastAPI 后端 + Tauri React 前端 + 声明式 YAML Agent 模块
+• 7 个 3R 模型：DUSt3R / MASt3R / MonST3R / Spann3R / Fast3R / Align3R / CUT3R
+• 远程服务器：172.17.140.97 (kykt26@KYKT-UI), TITAN RTX, CUDA 12.6
+• 当前版本：v0.4.0 — Agent 模块基础设施完成，CLI 可用
+
+【已完成 / 不要重复创建】
+✓ 项目基础：README/CHANGELOG/.gitignore/pyproject.toml/requirements.txt
+✓ backend/ 13 个 Python 模块（已迁移）
+✓ client/ React + Tauri 前端（已迁移）
+✓ runners/ 7 个模型 runner（已迁移）
+✓ agent/ 完整模块：__init__/cli/registry/schema_validator/env_builder/
+              smoke_runner/experiment_agent/health_doctor + 7 个 YAML 蓝图
+✓ docs/ 5 个文档（含 agent-guide.md）
+
+【下一步优先级（在 AGENT_HANDOFF.md §5 详述）】
+P0  将 Agent 暴露为后端 API，前端加 AgentWorkbench.tsx
+P1  补 tests/，写单元测试
+P2  在远程服务器跑 python -m agent build dust3r 验证完整流程
+P3  完善文档
+
+【绝对禁止】
+✗ 不要重写 backend/app.py（91 KB，必须 read 后 edit）
+✗ 不要删除任何 model_specs/*.yaml
+✗ 不要修改 agent/__init__.py 的 __getattr__ lazy import
+✗ 不要把 backend/model_registry.py 和 agent/registry.py 合并（职责不同）
+✗ 不要用旧的简化 YAML 格式（已废弃，新格式在 SCHEMA.md）
+✗ 不要在同一个 response 里对同一文件 edit 两次
+
+【遇到不确定时】
+1. 先 read 相关文件
+2. 查 agent/model_specs/SCHEMA.md
+3. 跑 python -m agent info <model_key> 看蓝图
+4. 看 AGENT_HANDOFF.md §6（已知约束）
+
+【联系信息】
+• 用户母仓：E:\kykt
+• 历史路径：E:\kykt\Coding\4.06\vision_ui（已弃用，仅查阅）
+• 本项目：E:\Demo\3R_All_in_One\3R_All_in_One（活跃）
+
+═══════════════════════════════════════════════════════════════════════════
+  现在请：
+  Step 1: read_file E:\Demo\3R_All_in_One\3R_All_in_One\AGENT_HANDOFF.md
+  Step 2: 跑 python -m agent validate && python -m agent status
+  Step 3: 等用户告诉你具体任务再动手
+═══════════════════════════════════════════════════════════════════════════

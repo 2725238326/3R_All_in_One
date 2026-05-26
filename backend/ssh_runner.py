@@ -12,8 +12,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from job_store import ROOT, get_job_dir, iter_input_items, load_job, update_job, write_result_summary
+from job_store import get_job_dir, iter_input_items, load_job, update_job, write_result_summary
 from model_contracts import runner_spec_for
+from runtime_paths import runners_dir
 
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
@@ -49,7 +50,7 @@ class ServerConfig:
     remote_cut3r_model: str = "/hdd3/kykt26/code/cut3r/src/cut3r_512_dpt_4_64.pth"
 
 
-LOCAL_RUNNERS_DIR = ROOT / "runners"
+LOCAL_RUNNERS_DIR = runners_dir()
 SSH_CONNECT_OPTIONS = [
     "-o",
     "BatchMode=yes",

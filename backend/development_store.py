@@ -9,9 +9,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from runtime_paths import data_root, local_jobs_dir
 
-ROOT = Path(__file__).resolve().parent
-LOCAL_JOBS_DIR = ROOT / "local_jobs"
+
+ROOT = data_root()
+LOCAL_JOBS_DIR = local_jobs_dir()
 DEVELOPMENT_MANIFEST_PATH = LOCAL_JOBS_DIR / "development_manifest.json"
 _DEVELOPMENT_STORE_LOCK = threading.RLock()
 
