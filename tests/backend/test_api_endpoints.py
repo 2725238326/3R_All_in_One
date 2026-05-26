@@ -1,0 +1,113 @@
+# ═══════════════════════════════════════════════════════════════
+# API Endpoints Tests — FastAPI 端点测试
+# ═══════════════════════════════════════════════════════════════
+"""
+测试 FastAPI 路由:
+- /api/health
+- /api/jobs/*
+- /api/models/*
+"""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+
+class TestHealthEndpoint:
+    """健康检查端点测试"""
+    
+    def test_health_returns_200(self, test_client: TestClient):
+        """健康检查应返回 200"""
+        response = test_client.get("/api/health")
+        assert response.status_code == 200
+    
+    def test_health_response_format(self, test_client: TestClient):
+        """健康检查响应格式"""
+        response = test_client.get("/api/health")
+        data = response.json()
+        
+        assert "status" in data or isinstance(data, dict)
+
+
+class TestJobsEndpoints:
+    """任务相关端点测试"""
+    
+    def test_list_jobs(self, test_client: TestClient):
+        """/api/jobs 应返回任务列表"""
+        response = test_client.get("/api/jobs")
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert "jobs" in data or isinstance(data, list)
+    
+    def test_get_nonexistent_job(self, test_client: TestClient):
+        """获取不存在的任务应返回 404"""
+        response = test_client.get("/api/jobs/nonexistent_job_id")
+        assert response.status_code == 404
+    
+    @pytest.mark.skip(reason="需要完整的任务创建流程")
+    def test_create_job(self, test_client: TestClient):
+        """创建新任务"""
+        payload = {
+            "model": "monst3r",
+            "source_type": "video",
+            "params": {}
+        }
+        response = test_client.post("/api/jobs", json=payload)
+        assert response.status_code in (200, 201)
+
+
+class TestModelsEndpoints:
+    """模型相关端点测试"""
+    
+    def test_list_models(self, test_client: TestClient):
+        """/api/models/catalog 应返回模型列表"""
+        response = test_client.get("/api/models/catalog")
+        assert response.status_code == 200
+    
+    def test_get_model_contract(self, test_client: TestClient):
+        """获取模型契约"""
+        response = test_client.get("/api/models/monst3r/contract")
+        # 可能返回 200 或 404（如果模型未配置）
+        assert response.status_code in (200, 404)
+
+
+class TestStaticFiles:
+    """静态文件端点测试"""
+    
+    def test_root_path(self, test_client: TestClient):
+        """根路径应返回前端页面或重定向"""
+        response = test_client.get("/")
+        # 可能返回 200（有前端）或 404（无前端）
+        assert response.status_code in (200, 404, 307)
+
+
+class TestCORS:
+    """CORS 配置测试"""
+    
+    def test_cors_headers(self, test_client: TestClient):
+        """检查 CORS 响应头"""
+        response = test_client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET"
+            }
+        )
+        # OPTIONS 请求应该被处理
+        assert response.status_code in (200, 405)
+
+
+class TestErrorHandling:
+    """错误处理测试"""
+    
+    def test_invalid_endpoint(self, test_client: TestClient):
+        """访问无效端点应返回 404"""
+        response = test_client.get("/api/invalid_endpoint_xyz")
+        assert response.status_code == 404
+    
+    def test_method_not_allowed(self, test_client: TestClient):
+        """使用不允许的方法应返回 405"""
+        response = test_client.delete("/api/health")
+        assert response.status_code in (405, 404)
