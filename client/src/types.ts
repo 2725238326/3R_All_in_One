@@ -479,6 +479,7 @@ export type InspectionPacket = {
       target: string;
       primary: boolean;
     }>;
+    viserSupported?: boolean;
   };
   artifactIndex: {
     groups: Array<{

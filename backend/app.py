@@ -74,6 +74,7 @@ from model_registry import (
     get_model_spec,
 )
 from ssh_runner import ServerConfig, cancel_remote_job, run_remote_job
+from viser_manager import manager as viser_manager
 from logging_config import setup_logging, log, JobLogger
 from runtime_paths import backend_root, bundle_root, data_root
 from job_scheduler import JobPriority, scheduler
@@ -684,6 +685,12 @@ def build_job_inspection_packet(job) -> dict:
         advisor_report=payload["advisor_report"],
         logs=payload["logs"],
     )
+    artifacts = payload["artifactIndex"]["artifacts"] or []
+    has_frame_geometry = any(
+        a.get("relativePath", "").lower().endswith(".npy") and "frame_" in a.get("name", "").lower()
+        for a in artifacts
+    )
+    viser_supported = job.model == "monst3r" and (has_frame_geometry or job.status == "finished")
     return {
         **payload,
         "contract": contract,
@@ -700,6 +707,7 @@ def build_job_inspection_packet(job) -> dict:
             "recommendedActions": _inspection_recommended_actions(job, attention, payload["artifactIndex"]),
             "logDigest": _log_digest(payload["logs"]),
             "scoreDigest": _score_digest(payload["evaluation"]),
+            "viserSupported": viser_supported,
         },
     }
 
@@ -2457,6 +2465,49 @@ async def advisor_evaluate_api(job_id: str):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return JSONResponse({"ok": True, **_job_payload(load_job(job_id))})
+
+
+# ══════════════════════════════════════════════════════════════════
+# Viser 4D 可视化（仅 monst3r 等动态重建模型）
+# ══════════════════════════════════════════════════════════════════
+
+def _job_or_404(job_id: str):
+    try:
+        return load_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}。") from exc
+
+
+@app.get("/api/jobs/{job_id}/viser/status")
+async def viser_status_api(job_id: str):
+    _job_or_404(job_id)
+    session = viser_manager.get(job_id)
+    if session is None:
+        return JSONResponse({"jobId": job_id, "status": "idle", "url": None})
+    return JSONResponse(session.to_dict())
+
+
+@app.post("/api/jobs/{job_id}/viser/start")
+async def viser_start_api(job_id: str):
+    job = _job_or_404(job_id)
+    if job.model != "monst3r":
+        raise HTTPException(status_code=400, detail=f"viser 当前仅支持 monst3r 任务，当前模型：{job.model}。")
+    try:
+        session = viser_manager.start(job_id, ServerConfig())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return JSONResponse(session.to_dict())
+
+
+@app.post("/api/jobs/{job_id}/viser/stop")
+async def viser_stop_api(job_id: str):
+    _job_or_404(job_id)
+    session = viser_manager.stop(job_id)
+    if session is None:
+        return JSONResponse({"jobId": job_id, "status": "idle", "url": None})
+    return JSONResponse(session.to_dict())
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -6,6 +6,7 @@ import { SummaryPanel } from "./SummaryPanel";
 import { EvaluationPanel } from "./EvaluationPanel";
 import { AdvisorPanel } from "./AdvisorWorkbench";
 import { HighlightedLogTail } from "./jobInspectorHelpers";
+import { ViserPanel } from "./ViserPanel";
 
 interface InspectWorkspaceProps {
   inspection: InspectionPacket;
@@ -108,7 +109,13 @@ export function InspectWorkspace({
       {/* Column 2: Artifacts & Results */}
       <section className="inspect-pane center artifacts-pane">
         <PanelTitle eyebrow="Artifacts" title="产物与分组" />
-        
+
+        {details.viserSupported && (
+          <div style={{ marginBottom: '16px' }}>
+            <ViserPanel jobId={job.job_id} />
+          </div>
+        )}
+
         <div className="primary-artifacts-strip" style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '12px 0' }}>
           {(artifactIndex?.primaryArtifacts ?? []).map((art) => {
             const isImageOrVideo = art.kind === 'image' || art.kind === 'video';
