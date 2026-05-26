@@ -30,7 +30,7 @@ import {
 export type PreviewAsset = {
   url: string;
   name: string;
-  kind: "image" | "video";
+  kind: "image" | "video" | "pointcloud";
   note?: string;
 };
 
@@ -344,9 +344,26 @@ export function JobDetail(props: {
                             >
                               <div className="output-preview placeholder">VIDEO</div>
                             </button>
+                          ) : output.is_pointcloud ? (
+                            <button
+                              className="output-preview-button"
+                              type="button"
+                              onClick={() =>
+                                props.onPreviewAsset({
+                                  url: props.assetUrl(output.url),
+                                  name: output.display_name,
+                                  kind: "pointcloud"
+                                })
+                              }
+                            >
+                              <div className="output-preview placeholder pointcloud">
+                                <span className="pointcloud-icon">⬡</span>
+                                <span>PLY</span>
+                              </div>
+                            </button>
                           ) : (
                             <div className="output-preview placeholder">
-                              {output.is_pointcloud ? "PLY" : output.is_model3d ? "GLB" : fileExtensionLabel(output.display_name)}
+                              {output.is_model3d ? "GLB" : fileExtensionLabel(output.display_name)}
                             </div>
                           )}
                           <div>
@@ -366,6 +383,19 @@ export function JobDetail(props: {
                                   type="button"
                                 >
                                   预览
+                                </button>
+                              ) : output.is_pointcloud ? (
+                                <button
+                                  onClick={() =>
+                                    props.onPreviewAsset({
+                                      url: props.assetUrl(output.url),
+                                      name: output.display_name,
+                                      kind: "pointcloud"
+                                    })
+                                  }
+                                  type="button"
+                                >
+                                  3D 预览
                                 </button>
                               ) : null}
                               <a href={props.assetUrl(output.url)} download>

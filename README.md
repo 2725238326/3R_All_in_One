@@ -20,9 +20,14 @@
 
 ### Key Features
 
-- **Command Center** — Job queue, batch dispatch, real-time status via WebSocket
+- **Command Center** — Job queue with search/filter, batch dispatch, real-time progress via WebSocket
+- **Comparison Charts** — Radar / bar charts + side-by-side visual preview for multi-model comparison
 - **Sample Matrix** — Cross-model comparison on shared test samples
 - **AI Advisor** — Automated result evaluation, parameter recommendation, failure diagnosis
+- **Parameter Templates** — Save/load param configs for quick reuse across experiments
+- **Multi-Server Management** — Multiple SSH server profiles with one-click switching
+- **Upload Progress** — Real-time file upload progress bar with XHR streaming
+- **Failure Diagnosis** — Error message visible directly in queue, hover for full detail
 - **Resource Monitor** — GPU/CPU/memory/disk real-time monitoring
 - **Report Export** — HTML/PDF comparison reports with depth heatmaps and GIF animations
 - **Experiment Agent** — One-click environment setup and batch experiment orchestration
@@ -54,37 +59,55 @@
 
 ```
 3R_All_in_One/
-├── backend/           # FastAPI backend
-│   ├── app.py         # Main application
-│   ├── job_store.py   # Job persistence
-│   ├── job_scheduler.py
+├── backend/               # FastAPI backend
+│   ├── app.py             # Main application (~2600 LOC)
+│   ├── job_store.py       # Job persistence & query
+│   ├── job_scheduler.py   # Concurrency control & priority queue
+│   ├── ssh_runner.py      # SSH/SCP remote execution
+│   ├── param_templates.py # Parameter template storage
+│   ├── server_profiles.py # Multi-server configuration
+│   ├── logging_config.py  # Structured logging (loguru)
+│   ├── retry_policy.py    # Auto-retry with exponential backoff
+│   ├── state_reconciler.py# Crash recovery
 │   ├── resource_monitor.py
 │   ├── metrics_calculator.py
 │   ├── report_exporter.py
 │   ├── visual_artifacts.py
 │   ├── advisor.py
-│   ├── ssh_runner.py
 │   ├── model_registry.py
 │   ├── model_contracts.py
-│   └── requirements.txt
-├── client/            # React + Tauri frontend
+│   └── runners/           # Runner implementations
+│       ├── ssh.py         # SSH runner (primary)
+│       ├── docker.py      # Docker runner (optional)
+│       └── online_api.py  # API runner (optional)
+├── client/                # React + Tauri frontend
 │   ├── src/
+│   │   ├── App.tsx        # Main app (Zustand migration in progress)
+│   │   ├── CompareCharts.tsx    # Radar/bar/preview charts
+│   │   ├── CompareBoard.tsx     # Comparison board
+│   │   ├── ParamTemplates.tsx   # Param template selector
+│   │   ├── QueueWorkspace.tsx   # Queue with search & filter
+│   │   ├── uploadProgress.ts   # Upload progress utility
+│   │   ├── store/appStore.ts   # Zustand global store
+│   │   └── hooks/              # Custom hooks
 │   ├── src-tauri/
 │   └── package.json
-├── runners/           # Remote model execution scripts
+├── runners/               # Remote model execution scripts
 │   ├── dust3r_runner.py
 │   ├── mast3r_runner.py
 │   ├── monst3r_runner.py
 │   ├── spann3r_runner.py
 │   └── fast3r_runner.py
-├── agent/             # One-click setup & experiment orchestration
-│   ├── model_specs/   # Declarative model configurations
+├── tests/                 # Backend tests (116 passing)
+│   └── backend/
+├── agent/                 # One-click setup & experiment orchestration
+│   ├── model_specs/
 │   ├── env_builder.py
 │   ├── smoke_runner.py
 │   └── experiment_agent.py
-├── docs/              # Documentation
-├── tools/             # Utility scripts
-└── samples/           # Shared test samples manifest
+├── docs/                  # Documentation
+├── tools/                 # Utility scripts
+└── samples/               # Shared test samples manifest
 ```
 
 ## Quick Start

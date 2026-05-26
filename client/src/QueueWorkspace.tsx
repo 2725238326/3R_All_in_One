@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { canDispatchJobStatus, JobListItem } from "./workflowHelpers";
+import { canDispatchJobStatus, JobListItem, matchesJobQuery } from "./workflowHelpers";
 import { formatDateTime, modelDisplayName, sourceTypeLabel, statusLabel } from "./displayHelpers";
 import { StatusBadge } from "./uiPrimitives";
 import { ModelCatalogItem } from "./types";
@@ -42,6 +42,24 @@ export function QueueWorkspace({
   batchActionBusy
 }: QueueWorkspaceProps) {
   const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  const filteredJobs = useMemo(() => {
+    let result = jobs;
+    if (statusFilter !== "all") {
+      result = result.filter(j => {
+        if (statusFilter === "failed") return j.job.status === "failed" || j.job.status === "cancelled";
+        if (statusFilter === "pending") return canDispatchJobStatus(j.job.status);
+        return j.job.status === statusFilter;
+      });
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(j => matchesJobQuery(j, q));
+    }
+    return result;
+  }, [jobs, statusFilter, searchQuery]);
 
   const stats = useMemo(() => {
     const created = jobs.filter(j => canDispatchJobStatus(j.job.status)).length;
@@ -53,7 +71,7 @@ export function QueueWorkspace({
 
   const runningJobs = useMemo(() => jobs.filter(j => j.job.status === "running"), [jobs]);
   const pendingJobs = useMemo(() => jobs.filter(j => canDispatchJobStatus(j.job.status)), [jobs]);
-  const recentJobs = useMemo(() => jobs.slice(0, 10), [jobs]);
+  const recentJobs = useMemo(() => filteredJobs.slice(0, 50), [filteredJobs]);
   const selectedBatchSet = useMemo(() => new Set(selectedBatchIds), [selectedBatchIds]);
   const selectedBatchItems = useMemo(
     () => jobs.filter((item) => selectedBatchSet.has(item.job.job_id)),
@@ -174,6 +192,9 @@ export function QueueWorkspace({
                     <code>{item.job.job_id.slice(0, 8)}</code>
                     <span>{item.phase_display.label}</span>
                   </div>
+                  {item.job.progress_message && (
+                    <div className="queue-job-live-msg">{item.job.progress_message}</div>
+                  )}
                   <div className="queue-job-progress-bar">
                     <div className="queue-job-progress-fill" style={{ width: `${item.phase_display.percent}%` }} />
                   </div>
@@ -237,7 +258,27 @@ export function QueueWorkspace({
         <div className="queue-table-section">
           <div className="queue-table-header">
             <span className="queue-table-title">全部任务</span>
-            <span className="queue-table-count">{jobs.length} 条记录</span>
+            <span className="queue-table-count">{filteredJobs.length}/{jobs.length} 条</span>
+          </div>
+          <div className="queue-search-bar">
+            <input
+              type="text"
+              className="queue-search-input"
+              placeholder="搜索任务 ID、模型、备注..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <select
+              className="queue-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">全部状态</option>
+              <option value="running">运行中</option>
+              <option value="pending">待派发</option>
+              <option value="finished">已完成</option>
+              <option value="failed">失败/取消</option>
+            </select>
           </div>
           <div className="workbench-table-container compact">
             <table className="workbench-table">
@@ -281,7 +322,13 @@ export function QueueWorkspace({
                     <td>{sourceTypeLabel(item.job.source_type)}</td>
                     <td className="time-cell">{formatDateTime(item.job.created_at)}</td>
                     <td>
-                      <span className="progress-cell">{item.phase_display.percent}%</span>
+                      {(item.job.status === "failed" || item.job.status === "cancelled") && item.job.error_message ? (
+                        <span className="error-hint" title={item.job.error_message}>
+                          {item.job.error_message.length > 28 ? item.job.error_message.slice(0, 28) + "\u2026" : item.job.error_message}
+                        </span>
+                      ) : (
+                        <span className="progress-cell">{item.phase_display.percent}%</span>
+                      )}
                     </td>
                     <td>
                       <button className="icon-btn" onClick={(e) => { e.stopPropagation(); onInspectJob(item.job.job_id); }}>

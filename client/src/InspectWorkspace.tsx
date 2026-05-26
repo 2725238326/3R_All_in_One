@@ -110,7 +110,7 @@ export function InspectWorkspace({
         <PanelTitle eyebrow="Artifacts" title="产物与分组" />
         
         <div className="primary-artifacts-strip" style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '12px 0' }}>
-          {artifactIndex.primaryArtifacts.map((art) => {
+          {(artifactIndex?.primaryArtifacts ?? []).map((art) => {
             const isImageOrVideo = art.kind === 'image' || art.kind === 'video';
             return (
               <div 
@@ -137,17 +137,19 @@ export function InspectWorkspace({
         </div>
 
         <div className="artifact-groups" style={{ marginTop: '24px' }}>
-          {artifactIndex.groups.map((group) => (
+          {(artifactIndex?.groups ?? []).map((group) => {
+            const groupArtifacts = group.artifacts ?? [];
+            return (
             <details key={group.key} className="output-section blue" open>
               <summary>
                 <div>
                   <strong>{group.label}</strong>
                   <p className="dense-text">{group.description}</p>
                 </div>
-                <span className="section-pill">{group.artifacts.length}</span>
+                <span className="section-pill">{groupArtifacts.length}</span>
               </summary>
               <div className="output-grid">
-                {group.artifacts.map((art) => (
+                {groupArtifacts.map((art) => (
                   <div key={art.relativePath} className="output-card">
                     <div className="dense-text">
                       <strong>{art.name}</strong>
@@ -167,7 +169,8 @@ export function InspectWorkspace({
                 ))}
               </div>
             </details>
-          ))}
+            );
+          })}
         </div>
       </section>
 

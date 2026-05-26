@@ -22,6 +22,8 @@ import type {
   ValidationCreateResponse
 } from "./types";
 import { API_BASE } from "./appConfig";
+import { uploadWithProgress } from "./uploadProgress";
+import type { UploadProgress } from "./uploadProgress";
 import {
   backendStatusText,
   delay,
@@ -84,6 +86,7 @@ import { QueueWorkspace } from "./QueueWorkspace";
 import { InspectWorkspace } from "./InspectWorkspace";
 import { CompareBoard, CompareBoardInline } from "./CompareBoard";
 import { filterRunnableModels, modelCompatibilityHint } from "./compareHelpers";
+import { PointCloudViewer } from "./PointCloudViewer";
 
 export type ServiceState = "starting" | "ready" | "degraded";
 export type JobFilter = "all" | "running" | "attention" | "finished";
@@ -130,6 +133,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [savingEvaluation, setSavingEvaluation] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<PreviewAsset | null>(null);
   const [advisorModalOpen, setAdvisorModalOpen] = useState(false);
@@ -583,6 +587,7 @@ function App() {
     }
 
     setSubmitting(true);
+    setUploadProgress(0);
     const formData = new FormData();
     formData.append("model", formState.model);
     formData.append("source_type", formState.source_type);
@@ -591,7 +596,11 @@ function App() {
     files.forEach(f => formData.append("files", f, f.name));
 
     try {
-      const payload = await fetchJson<JobPayload>("/api/jobs", { method: "POST", body: formData });
+      const payload = await uploadWithProgress<JobPayload>({
+        url: "/api/jobs",
+        formData,
+        onProgress: (p: UploadProgress) => setUploadProgress(p.percent),
+      });
       setFiles([]);
       handleInspectJob(payload.job.job_id);
       setInfoMessage(`任务 ${payload.job.job_id} 已创建。`);
@@ -599,6 +608,7 @@ function App() {
       setErrorMessage(friendlyError(e, "创建任务失败"));
     } finally {
       setSubmitting(false);
+      setUploadProgress(null);
     }
   }
 
@@ -618,11 +628,13 @@ function App() {
     if (!modelContracts[value]) {
       try {
         const contract = await fetchJson<ModelContract>(`/api/models/${value}/contract`);
+        const sourceTypes = contract.allowedSourceTypes || (contract as any).sourceTypes || [];
+        const fields = contract.paramSchema?.fields || [];
         setAppState(prev => prev ? { ...prev, modelContracts: { ...prev.modelContracts, [value]: contract } } : null);
         setFormState(prev => ({
           ...prev,
-          source_type: contract.allowedSourceTypes[0] || "images",
-          params: contract.paramSchema.fields.reduce((acc, f) => ({ ...acc, [f.key]: f.default }), {})
+          source_type: sourceTypes[0] || "images",
+          params: fields.reduce((acc, f) => ({ ...acc, [f.key]: f.default }), {})
         }));
       } catch (e) {
         setErrorMessage("加载模型契约失败");
@@ -829,6 +841,12 @@ function App() {
                   </div>
 
                   <div className="create-submit-section">
+                    {uploadProgress !== null && (
+                      <div className="upload-progress-bar">
+                        <div className="upload-progress-fill" style={{ width: `${uploadProgress}%` }} />
+                        <span className="upload-progress-text">上传中 {uploadProgress}%</span>
+                      </div>
+                    )}
                     {createMode === "single" ? (
                       <button
                         className="create-submit-btn primary"
@@ -836,7 +854,7 @@ function App() {
                         onClick={() => handleCreateJob()}
                         disabled={submitting || !!selectedModelLaunchBlocker || files.length === 0}
                       >
-                        {submitting ? "创建中..." : "创建任务"}
+                        {submitting ? (uploadProgress !== null ? `上传 ${uploadProgress}%` : "创建中...") : "创建任务"}
                       </button>
                     ) : (
                       <div className="create-submit-group">
@@ -969,17 +987,35 @@ function App() {
       )}
 
       {previewAsset && (
-        <div className="preview-modal-backdrop" onClick={() => setPreviewAsset(null)}>
-          <div className="preview-modal" onClick={e => e.stopPropagation()}>
-            <div className="preview-modal-head">
-              <strong>{previewAsset.name}</strong>
-              <button className="ghost-button small" onClick={() => setPreviewAsset(null)}>关闭</button>
-            </div>
-            <div className="preview-modal-body">
-              {previewAsset.kind === "image" ? <img src={previewAsset.url} alt={previewAsset.name} /> : <video src={previewAsset.url} controls autoPlay />}
+        previewAsset.kind === "pointcloud" ? (
+          <div className="pointcloud-modal" onClick={() => setPreviewAsset(null)}>
+            <div className="pointcloud-modal-content" onClick={e => e.stopPropagation()}>
+              <div className="pointcloud-modal-header">
+                <span className="pointcloud-modal-title">{previewAsset.name}</span>
+                <button className="pointcloud-modal-close" onClick={() => setPreviewAsset(null)}>×</button>
+              </div>
+              <div className="pointcloud-modal-body">
+                <PointCloudViewer
+                  url={previewAsset.url}
+                  height="100%"
+                  onError={(e) => console.error("PointCloud load error:", e)}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="preview-modal-backdrop" onClick={() => setPreviewAsset(null)}>
+            <div className="preview-modal" onClick={e => e.stopPropagation()}>
+              <div className="preview-modal-head">
+                <strong>{previewAsset.name}</strong>
+                <button className="ghost-button small" onClick={() => setPreviewAsset(null)}>关闭</button>
+              </div>
+              <div className="preview-modal-body">
+                {previewAsset.kind === "image" ? <img src={previewAsset.url} alt={previewAsset.name} /> : <video src={previewAsset.url} controls autoPlay />}
+              </div>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

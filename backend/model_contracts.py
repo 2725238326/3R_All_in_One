@@ -431,12 +431,14 @@ def artifact_index_for(model: str, output_files: list[str]) -> dict:
     groups = []
     for role, count in sorted(counts.items(), key=lambda item: (_role_order(primary_roles, item[0]), item[0])):
         role_meta = roles.get(role) or roles.get("other") or {}
+        group_artifacts = [a for a in artifacts if a["role"] == role]
         groups.append(
             {
                 "key": role,
                 "label": role_meta.get("label") or role.replace("_", " "),
                 "count": count,
                 "description": role_meta.get("description") or "",
+                "artifacts": group_artifacts,
             }
         )
 

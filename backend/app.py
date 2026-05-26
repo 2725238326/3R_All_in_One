@@ -38,6 +38,7 @@ from job_store import (
     EVALUATION_SCORE_FIELDS,
     EVALUATION_SCORE_MAX,
     EVALUATION_SCORE_MIN,
+    ROOT,
     clear_job_runtime,
     create_job,
     duplicate_job,
@@ -73,6 +74,7 @@ from model_registry import (
     get_model_spec,
 )
 from ssh_runner import ServerConfig, cancel_remote_job, run_remote_job
+from logging_config import setup_logging, log, JobLogger
 from runtime_paths import backend_root, bundle_root, data_root
 from job_scheduler import JobPriority, scheduler
 from resource_monitor import monitor as resource_monitor
@@ -1678,13 +1680,124 @@ async def health_api():
     return JSONResponse({"ok": True, "service": "kykt-vision-ui", "version": app.version})
 
 
+@app.get("/api/runners/availability")
+async def runners_availability_api():
+    """检查各执行器可用性"""
+    from runners.docker import LocalDockerRunner
+    from runners.online_api import OnlineAPIRunner
+    
+    return JSONResponse({
+        "ssh": True,  # SSH 始终可用（配置由用户提供）
+        "docker": LocalDockerRunner.is_available(),
+        "online_api": len(OnlineAPIRunner.available_providers()) > 0,
+    })
+
+
+# ─────────────── 参数模板 API ───────────────
+
+@app.get("/api/templates")
+async def list_templates_api(model: str | None = None):
+    """列出参数模板"""
+    from param_templates import list_templates
+    return JSONResponse(list_templates(model))
+
+
+@app.get("/api/templates/{template_id}")
+async def get_template_api(template_id: str):
+    """获取单个模板"""
+    from param_templates import get_template
+    tpl = get_template(template_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="模板不存在")
+    return JSONResponse(tpl)
+
+
+@app.post("/api/templates")
+async def save_template_api(request: Request):
+    """保存参数模板"""
+    from param_templates import save_template, make_template_id
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="模板名称不能为空")
+    template_id = body.get("id") or make_template_id(name)
+    tpl = save_template(
+        template_id=template_id,
+        name=name,
+        model=body.get("model", ""),
+        params=body.get("params", {}),
+        source_type=body.get("source_type", "images"),
+        notes=body.get("notes", ""),
+    )
+    return JSONResponse(tpl)
+
+
+@app.delete("/api/templates/{template_id}")
+async def delete_template_api(template_id: str):
+    """删除模板"""
+    from param_templates import delete_template
+    deleted = delete_template(template_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="模板不存在")
+    return JSONResponse({"ok": True})
+
+
+# ─────────────── 服务器 Profile API ───────────────
+
+@app.get("/api/servers")
+async def list_servers_api():
+    """列出所有服务器配置"""
+    from server_profiles import list_profiles, get_active_profile_id
+    profiles = list_profiles()
+    active_id = get_active_profile_id()
+    return JSONResponse({"profiles": profiles, "active_id": active_id})
+
+
+@app.post("/api/servers")
+async def save_server_api(request: Request):
+    """保存服务器配置"""
+    from server_profiles import save_profile
+    body = await request.json()
+    alias = body.get("alias", "").strip()
+    if not alias:
+        raise HTTPException(status_code=400, detail="服务器别名不能为空")
+    profile_id = body.get("id") or alias.lower().replace(" ", "_")
+    profile = save_profile(profile_id, body)
+    return JSONResponse(profile)
+
+
+@app.post("/api/servers/active")
+async def set_active_server_api(request: Request):
+    """设置活跃服务器"""
+    from server_profiles import set_active_profile_id, get_profile
+    body = await request.json()
+    profile_id = body.get("id")
+    if profile_id:
+        profile = get_profile(profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="服务器配置不存在")
+    set_active_profile_id(profile_id)
+    return JSONResponse({"ok": True, "active_id": profile_id})
+
+
+@app.delete("/api/servers/{profile_id}")
+async def delete_server_api(profile_id: str):
+    """删除服务器配置"""
+    from server_profiles import delete_profile
+    deleted = delete_profile(profile_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="服务器配置不存在")
+    return JSONResponse({"ok": True})
+
+
 @app.get("/api/app/state")
 async def app_state_api():
     job_query = query_jobs(limit=50)
     jobs = job_query["jobs"]
     job_page = job_query["page"]
     model_catalog = get_model_catalog_options()
-    model_contracts = all_model_contracts()
+    model_contracts_list = all_model_contracts()
+    model_contracts = {c["model"]: c for c in model_contracts_list}
     development_lanes = [item.to_dict() for item in development_store.list_items()]
     return JSONResponse(
         {
@@ -2495,6 +2608,10 @@ async def generate_compare_visuals_api(sample_id: str):
 
 @app.on_event("startup")
 async def startup_event():
+    # 初始化结构化日志
+    setup_logging(level="INFO", console=True, file=True)
+    log.info("Backend starting up...")
+    
     resource_monitor.start()
     
     def dispatch_fn(job_id: str):

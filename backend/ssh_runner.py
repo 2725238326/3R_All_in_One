@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from job_store import get_job_dir, iter_input_items, load_job, update_job, write_result_summary
+from job_store import ROOT, get_job_dir, iter_input_items, load_job, update_job, write_result_summary
 from model_contracts import runner_spec_for
 from runtime_paths import runners_dir
 

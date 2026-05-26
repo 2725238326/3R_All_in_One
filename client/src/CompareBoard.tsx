@@ -14,6 +14,7 @@ import {
 } from "./compareHelpers";
 import { downloadTextFile } from "./fileHelpers";
 import { StatusBadge, SummaryStat } from "./uiPrimitives";
+import { CompareChartsPanel } from "./CompareCharts";
 
 export type CompareBoardProps = {
   sampleId: string | null;
@@ -124,6 +125,14 @@ export function CompareBoard({
           <div className="compare-board-summary-text">
             {compareSummaryText(packet.summary)}
           </div>
+
+          {packet.modelCells.length > 0 && (
+            <CompareChartsPanel
+              cells={packet.modelCells}
+              modelCatalog={modelCatalog}
+              apiBase={apiBase}
+            />
+          )}
 
           {packet.modelCells.length === 0 ? (
             <div className="compare-board-empty-cells">

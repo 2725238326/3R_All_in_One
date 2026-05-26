@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.0] - 2026-05-27
+
+### Added
+
+**对比与可视化**
+- 模型对比图表面板（雷达图 / 柱状图 / 并排预览），支持 Tab 切换
+- 雷达图：6 维评分（结构完整度/轨迹稳定性/噪声控制/动态处理/深度连续性/展示可用性）多模型叠加
+- 柱状图：单维度横向对比 + 全维度缩略概览
+- 并排预览：不同模型的点云/图片/视频同屏对比，自适应栅格
+
+**任务管理**
+- 任务队列搜索：支持按 ID、模型、备注全文搜索
+- 状态筛选下拉（全部/运行中/待派发/已完成/失败）
+- 列表扩展到 50 条（原 10 条）
+- 失败任务在队列中直接显示错误原因摘要（hover 看全文）
+- 运行中任务卡片实时显示 progress_message
+
+**参数模板**
+- 参数模板保存/加载/删除，按模型筛选
+- 后端 `/api/templates` CRUD API
+- 前端 ParamTemplateSelector 组件
+
+**多服务器配置**
+- 多 SSH 服务器 profile 管理（增删改查 + 活跃切换）
+- 后端 `/api/servers` CRUD API + `/api/servers/active` 切换
+- 配置持久化到 `local_jobs/servers/`
+
+**上传体验**
+- 文件上传进度条（XHR + onprogress），创建任务时实时显示百分比
+- 按钮文案动态变化（"创建任务" → "上传 67%"）
+
+**基础设施**
+- 结构化日志模块（loguru），每任务独立日志文件
+- 任务自动重试机制（指数退避，可配置策略）
+- 崩溃恢复 / 状态 reconcile（启动时修复孤儿任务）
+- Runner 统一接口（RunnerBase + SSH/Docker/OnlineAPI 三实现）
+- Zustand 渐进迁移 hooks（useUIState.ts）
+
+### Changed
+- QueueWorkspace 默认展示 50 条任务（原 10 条）
+- Docker Runner 和 Online API Runner 仅作为可选后备（不在默认 UI 显示）
+
+### Fixed
+- `runners/__init__.py` 导入 docker 模块时 try/except 防止 ImportError
+- 116 个后端测试全部通过
+
 ## [v0.4.0] - 2026-05-25
 
 ### Added

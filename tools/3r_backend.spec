@@ -17,6 +17,10 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 
 block_cipher = None
 
+# Ensure user site-packages is included
+import site
+user_site = site.getusersitepackages()
+
 # Collect all backend Python modules
 backend_modules = []
 for py_file in BACKEND_DIR.glob("*.py"):
@@ -99,19 +103,25 @@ hiddenimports = [
     "development_store",
     "job_store",
     "job_scheduler",
+    "logging_config",
     "metrics_calculator",
     "model_contracts",
     "model_registry",
+    "param_templates",
     "report_exporter",
     "resource_monitor",
+    "retry_policy",
     "runtime_paths",
+    "server_profiles",
     "ssh_runner",
+    "state_reconciler",
     "visual_artifacts",
+    "loguru",
 ]
 
 a = Analysis(
     [str(PROJECT_ROOT / "tools" / "run_backend.py")],
-    pathex=[str(BACKEND_DIR), str(PROJECT_ROOT)],
+    pathex=[str(BACKEND_DIR), str(PROJECT_ROOT), user_site],
     binaries=[],
     datas=datas + backend_modules,
     hiddenimports=hiddenimports,

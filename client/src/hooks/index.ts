@@ -6,3 +6,15 @@ export type { UseJobsReturn, UseJobsOptions } from "./useJobs";
 
 export { useAppState } from "./useAppState";
 export type { UseAppStateReturn, ServiceState } from "./useAppState";
+
+// Zustand-based UI state hooks (渐进式迁移)
+export {
+  usePreviewAsset,
+  useMessages,
+  useWorkspace,
+  useServiceState,
+  useJobs as useJobsStore,
+  useCreateForm,
+  useAdvisor,
+  useCompare,
+} from "./useUIState";
