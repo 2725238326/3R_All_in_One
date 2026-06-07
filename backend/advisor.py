@@ -10,7 +10,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from job_store import ROOT, get_job_dir, get_log_snippets, iter_input_items, load_evaluation, load_job, load_result_summary
+from job_store import ROOT, get_job_dir, get_log_snippets, iter_input_items, load_evaluation, load_job, load_result_summary, list_all_jobs
 from model_contracts import artifact_index_for, model_contract_for
 
 
@@ -601,3 +601,141 @@ def _normalize_text_list(value: Any) -> list[str]:
         if text:
             items.append(text)
     return items
+
+
+def recommend_parameters(job_id: str) -> dict[str, Any]:
+    """基于历史任务推荐参数"""
+    job = load_job(job_id)
+    similar_jobs = []
+    
+    # 查找同模型、同来源类型的历史成功任务
+    for j in list_all_jobs():
+        if j.job_id == job_id:
+            continue
+        if j.model == job.model and j.source_type == job.source_type and j.status == "finished":
+            similar_jobs.append(j)
+    
+    if not similar_jobs:
+        return {
+            "has_recommendations": False,
+            "message": "暂无相似历史任务用于参数推荐",
+            "recommended_params": None,
+        }
+    
+    # 统计常用参数
+    param_stats: dict[str, dict[str, int]] = {}
+    for j in similar_jobs:
+        for key, value in j.params.items():
+            if key not in param_stats:
+                param_stats[key] = {}
+            value_str = str(value)
+            param_stats[key][value_str] = param_stats[key].get(value_str, 0) + 1
+    
+    # 推荐最常用的参数值
+    recommended = {}
+    for key, counts in param_stats.items():
+        if counts:
+            best_value = max(counts, key=counts.get)
+            recommended[key] = best_value
+    
+    return {
+        "has_recommendations": True,
+        "message": f"基于 {len(similar_jobs)} 个相似历史任务推荐参数",
+        "recommended_params": recommended,
+        "similar_job_count": len(similar_jobs),
+    }
+
+
+def diagnose_failure(job_id: str) -> dict[str, Any]:
+    """深入诊断任务失败原因"""
+    job = load_job(job_id)
+    logs = get_log_snippets(job_id, limit=100)
+    
+    diagnosis = {
+        "job_id": job_id,
+        "status": job.status,
+        "error_message": job.error_message,
+        "diagnosis": [],
+        "suggestions": [],
+    }
+    
+    # 分析错误类型
+    if job.status == "failed":
+        error_msg = job.error_message or ""
+        
+        # OOM 错误
+        if "CUDA out of memory" in error_msg or "out of memory" in error_msg.lower():
+            diagnosis["diagnosis"].append("GPU 内存不足")
+            diagnosis["suggestions"].append("减少 batch_size 或 image_size")
+            diagnosis["suggestions"].append("尝试使用更小的模型或减少输入图像数量")
+        
+        # SSH 连接错误
+        if "SSH" in error_msg or "connection" in error_msg.lower():
+            diagnosis["diagnosis"].append("SSH 连接问题")
+            diagnosis["suggestions"].append("检查服务器配置和网络连接")
+            diagnosis["suggestions"].append("验证 SSH 密钥和服务器地址")
+        
+        # 环境错误
+        if "ModuleNotFoundError" in error_msg or "ImportError" in error_msg:
+            diagnosis["diagnosis"].append("Python 环境依赖缺失")
+            diagnosis["suggestions"].append("检查 conda 环境是否正确配置")
+            diagnosis["suggestions"].append("运行 pip install 安装缺失依赖")
+        
+        # 权限错误
+        if "Permission" in error_msg or "denied" in error_msg.lower():
+            diagnosis["diagnosis"].append("文件权限问题")
+            diagnosis["suggestions"].append("检查工作目录和输出目录的读写权限")
+        
+        # 磁盘空间
+        if "No space left" in error_msg or "disk full" in error_msg.lower():
+            diagnosis["diagnosis"].append("磁盘空间不足")
+            diagnosis["suggestions"].append("清理临时文件或输出目录")
+            diagnosis["suggestions"].append("检查服务器磁盘使用情况")
+    
+    # 分析日志中的警告
+    for log_item in logs:
+        tail = log_item.get("tail", "")
+        if "WARNING" in tail or "WARN" in tail:
+            if "deprecated" in tail.lower():
+                diagnosis["diagnosis"].append("使用了已弃用的 API 或参数")
+                diagnosis["suggestions"].append("检查模型版本和参数配置")
+    
+    if not diagnosis["diagnosis"]:
+        diagnosis["diagnosis"].append("未识别到特定错误模式")
+        diagnosis["suggestions"].append("查看完整日志获取更多细节")
+    
+    return diagnosis
+
+
+def batch_evaluate_jobs(job_ids: list[str]) -> dict[str, Any]:
+    """批量评估多个任务"""
+    status = advisor_status()
+    if not status["enabled"]:
+        raise RuntimeError("AI 评估尚未启用")
+    if not status["configured"]:
+        raise RuntimeError("AI 评估配置不完整")
+    
+    results = []
+    errors = []
+    
+    for job_id in job_ids:
+        try:
+            report = evaluate_job_with_advisor(job_id)
+            results.append({
+                "job_id": job_id,
+                "success": True,
+                "report": report,
+            })
+        except Exception as e:
+            errors.append({
+                "job_id": job_id,
+                "error": str(e),
+            })
+    
+    return {
+        "total": len(job_ids),
+        "success_count": len(results),
+        "error_count": len(errors),
+        "results": results,
+        "errors": errors,
+    }

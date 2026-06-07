@@ -697,13 +697,71 @@ export type JobMetrics = {
     trajectory?: {
       file: string;
       metrics: {
-        ate: number;
-        rpe_trans: number;
-        rpe_rot_deg: number;
-        frame_count: number;
-        path_length: number;
+        file: string;
+        metrics: {
+          path_length: number;
+          average_speed: number;
+          smoothness: number;
+          drift: number;
+        };
       };
     };
-    error?: string;
   };
+};
+
+// ──────────────────────────────────────────────────────────────
+// Storage Management Types
+// ──────────────────────────────────────────────────────────────
+
+export type StorageStats = {
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  usagePercent: number;
+  jobCount: number;
+  byModel: Record<string, number>;
+  byStatus: Record<string, number>;
+  largestJobs: Array<{ jobId: string; bytes: number }>;
+};
+
+export type CleanupCondition = {
+  type: "age_days" | "score_below" | "manual";
+  value: number;
+  statusFilter: string[];
+};
+
+export type CleanupRule = {
+  name: string;
+  enabled: boolean;
+  priority: number;
+  condition: CleanupCondition | null;
+  action: "delete" | "archive";
+};
+
+export type AutoCleanConfig = {
+  enabled: boolean;
+  checkIntervalHours: number;
+  thresholdPercent: number;
+};
+
+export type StorageConfig = {
+  quotaBytes: number;
+  rules: CleanupRule[];
+  protectedSampleIds: string[];
+  autoClean: AutoCleanConfig;
+};
+
+export type CleanupCandidate = {
+  jobId: string;
+  reason: string;
+  sizeBytes: number;
+  ruleName: string;
+};
+
+export type CleanupResult = {
+  deletedCount: number;
+  freedBytes: number;
+  candidates: CleanupCandidate[];
+  errors: string[];
+  dryRun: boolean;
 };

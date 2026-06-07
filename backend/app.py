@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,9 +30,22 @@ from advisor import (
     advisor_provider_options,
     advisor_status,
     evaluate_job_with_advisor,
+    recommend_parameters,
+    diagnose_failure,
+    batch_evaluate_jobs,
     load_advisor_report,
     save_advisor_config,
     test_advisor_connection,
+)
+from experiment_orchestrator import (
+    create_experiment_template,
+    delete_experiment_template,
+    generate_param_combinations,
+    get_experiment_template,
+    get_experiment_run_summary,
+    list_experiment_templates,
+    run_experiment_from_template,
+    update_experiment_template,
 )
 from development_store import DevelopmentItem, DevelopmentStore, DevelopmentStoreError, item_priority_score
 from job_store import (
@@ -75,6 +89,8 @@ from model_registry import (
 )
 from ssh_runner import ServerConfig, cancel_remote_job, run_remote_job
 from viser_manager import manager as viser_manager
+from storage_config import load_config, save_config, StorageConfig
+from storage_manager import get_storage_stats, evaluate_cleanup_rules, execute_cleanup, auto_clean_if_needed, start_auto_clean, stop_auto_clean, list_trash_items, restore_from_trash, empty_trash
 from logging_config import setup_logging, log, JobLogger
 from runtime_paths import backend_root, bundle_root, data_root
 from job_scheduler import JobPriority, scheduler
@@ -98,7 +114,47 @@ development_store = DevelopmentStore()
 WS_ALL_JOBS_KEY = "__all__"
 
 
-app = FastAPI(title="3R All-in-One", version="0.4.1")
+app = FastAPI(
+    title="3R All-in-One API",
+    description="MonST3R 应用程序后端 API - 支持 DUSt3R、MASt3R、MonST3R、Spann3R、Fast3R、Align3R、CUT3R 等三维重建模型",
+    version="0.4.1",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_tags=[
+        {
+            "name": "系统状态",
+            "description": "系统健康检查和状态查询"
+        },
+        {
+            "name": "任务管理",
+            "description": "任务的创建、查询、更新和删除"
+        },
+        {
+            "name": "批量操作",
+            "description": "批量任务操作（派发、取消、删除等）"
+        },
+        {
+            "name": "模型管理",
+            "description": "模型目录、契约和参数管理"
+        },
+        {
+            "name": "AI 顾问",
+            "description": "AI 辅助评估、参数推荐和故障诊断"
+        },
+        {
+            "name": "存储管理",
+            "description": "存储配额、清理规则和回收站管理"
+        },
+        {
+            "name": "实验编排",
+            "description": "实验模板、参数网格搜索和自动化流程"
+        },
+        {
+            "name": "数据面板",
+            "description": "样本数据、开发车道和对比分析"
+        },
+    ]
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -2326,7 +2382,7 @@ async def sample_compare_report_markdown_api(sample_id: str):
     return PlainTextResponse(packet["reportMarkdown"], media_type="text/markdown; charset=utf-8")
 
 
-@app.get("/api/advisor/status")
+@app.get("/api/advisor/status", tags=["AI 顾问"])
 async def advisor_status_api():
     return JSONResponse(advisor_status())
 
@@ -2362,7 +2418,124 @@ async def advisor_test_api():
         payload = test_advisor_connection()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/advisor/jobs/{job_id}/recommend")
+async def advisor_recommend_params_api(job_id: str):
+    try:
+        payload = recommend_parameters(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}") from exc
     return JSONResponse(payload)
+
+
+@app.get("/api/advisor/jobs/{job_id}/diagnose")
+async def advisor_diagnose_api(job_id: str):
+    try:
+        payload = diagnose_failure(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}") from exc
+    return JSONResponse(payload)
+
+
+@app.post("/api/advisor/batch-evaluate")
+async def advisor_batch_evaluate_api(request: Request):
+    payload = await request.json()
+    job_ids = payload.get("job_ids", [])
+    if not job_ids:
+        raise HTTPException(status_code=400, detail="job_ids 不能为空")
+    try:
+        result = batch_evaluate_jobs(job_ids)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(result)
+
+
+# ─────────────── 实验编排 API ───────────────
+
+@app.get("/api/experiments/templates", tags=["实验编排"])
+async def list_experiment_templates_api():
+    """列出所有实验模板"""
+    templates = list_experiment_templates()
+    return JSONResponse({"templates": [t.to_dict() for t in templates]})
+
+
+@app.get("/api/experiments/templates/{template_id}", tags=["实验编排"])
+async def get_experiment_template_api(template_id: str):
+    """获取实验模板详情"""
+    template = get_experiment_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail=f"实验模板 {template_id} 不存在")
+    return JSONResponse(template.to_dict())
+
+
+@app.post("/api/experiments/templates", tags=["实验编排"])
+async def create_experiment_template_api(request: Request):
+    """创建实验模板"""
+    payload = await request.json()
+    try:
+        template = create_experiment_template(
+            name=payload.get("name", ""),
+            description=payload.get("description", ""),
+            model=payload.get("model", ""),
+            source_type=payload.get("source_type", ""),
+            base_params=payload.get("base_params", {}),
+            param_grid=payload.get("param_grid", {}),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(template.to_dict())
+
+
+@app.patch("/api/experiments/templates/{template_id}", tags=["实验编排"])
+async def update_experiment_template_api(template_id: str, request: Request):
+    """更新实验模板"""
+    payload = await request.json()
+    try:
+        template = update_experiment_template(
+            template_id=template_id,
+            name=payload.get("name"),
+            description=payload.get("description"),
+            base_params=payload.get("base_params"),
+            param_grid=payload.get("param_grid"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return JSONResponse(template.to_dict())
+
+
+@app.delete("/api/experiments/templates/{template_id}", tags=["实验编排"])
+async def delete_experiment_template_api(template_id: str):
+    """删除实验模板"""
+    success = delete_experiment_template(template_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="实验模板不存在")
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/experiments/templates/{template_id}/run", tags=["实验编排"])
+async def run_experiment_api(template_id: str, request: Request):
+    """从实验模板运行实验"""
+    payload = await request.json()
+    try:
+        run = run_experiment_from_template(
+            template_id=template_id,
+            run_name=payload.get("run_name", ""),
+            files=[Path(f) for f in payload.get("files", [])],
+            notes=payload.get("notes", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(run.to_dict())
+
+
+@app.post("/api/experiments/summary", tags=["实验编排"])
+async def experiment_summary_api(request: Request):
+    """获取实验运行摘要"""
+    payload = await request.json()
+    job_ids = payload.get("job_ids", [])
+    summary = get_experiment_run_summary(job_ids)
+    return JSONResponse(summary)
 
 
 @app.post("/api/jobs/batch-dispatch")
@@ -2400,6 +2573,25 @@ async def batch_cancel_api(payload: BatchJobsRequest):
                     "list_item": _job_list_item(job),
                 }
             )
+        except HTTPException as exc:
+            results.append({"job_id": job_id, "success": False, "status_code": exc.status_code, "error": exc.detail})
+        except Exception as exc:
+            results.append({"job_id": job_id, "success": False, "status_code": 500, "error": str(exc)})
+    return JSONResponse({"ok": True, "results": results})
+
+
+@app.post("/api/jobs/batch-delete")
+async def batch_delete_api(payload: BatchJobsRequest):
+    results = []
+    for job_id in _normalize_batch_job_ids(payload.job_ids):
+        try:
+            job = load_job(job_id)
+            if job.status == "running":
+                raise HTTPException(status_code=400, detail=f"任务 {job_id} 正在运行，无法删除")
+            job_dir = get_job_dir(job_id)
+            if job_dir.exists():
+                shutil.rmtree(job_dir)
+            results.append({"job_id": job_id, "success": True})
         except HTTPException as exc:
             results.append({"job_id": job_id, "success": False, "status_code": exc.status_code, "error": exc.detail})
         except Exception as exc:
@@ -2634,13 +2826,103 @@ async def get_job_visual_api(job_id: str, filename: str):
         load_job(job_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}。") from exc
-    
+
     visual_path = get_job_dir(job_id) / "visuals" / filename
     if not visual_path.exists():
         raise HTTPException(status_code=404, detail=f"未找到可视化文件 {filename}。")
-    
+
     media_type = "image/png" if filename.endswith(".png") else "image/gif"
     return FileResponse(visual_path, media_type=media_type)
+
+
+# ══════════════════════════════════════════════════════════════════
+# 存储管理 API
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/api/storage/stats")
+async def storage_stats_api():
+    stats = get_storage_stats()
+    return JSONResponse({
+        "totalBytes": stats.total_bytes,
+        "usedBytes": stats.used_bytes,
+        "freeBytes": stats.free_bytes,
+        "usagePercent": round((stats.used_bytes / stats.total_bytes) * 100, 2) if stats.total_bytes > 0 else 0,
+        "jobCount": stats.job_count,
+        "byModel": {k: v for k, v in stats.by_model.items()},
+        "byStatus": {k: v for k, v in stats.by_status.items()},
+        "largestJobs": [{"jobId": j, "bytes": s} for j, s in stats.largest_jobs],
+    })
+
+
+@app.get("/api/storage/config")
+async def storage_config_api():
+    config = load_config()
+    return JSONResponse(config.to_dict())
+
+
+@app.post("/api/storage/config")
+async def update_storage_config_api(request):
+    try:
+        data = await request.json()
+        config = StorageConfig.from_dict(data)
+        save_config(config)
+        return JSONResponse({"ok": True, "config": config.to_dict()})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"配置更新失败: {exc}") from exc
+
+
+@app.post("/api/storage/clean")
+async def storage_clean_api(dry_run: bool = False):
+    candidates = evaluate_cleanup_rules()
+    result = execute_cleanup(candidates, dry_run=dry_run)
+    return JSONResponse({
+        "deletedCount": result.deleted_count,
+        "freedBytes": result.freed_bytes,
+        "candidates": [
+            {
+                "jobId": c.job_id,
+                "reason": c.reason,
+                "sizeBytes": c.size_bytes,
+                "ruleName": c.rule_name,
+            }
+            for c in result.candidates
+        ],
+        "errors": result.errors,
+        "dryRun": dry_run,
+    })
+
+
+@app.post("/api/storage/auto-clean")
+async def storage_auto_clean_api():
+    result = auto_clean_if_needed()
+    if result is None:
+        return JSONResponse({"triggered": False, "reason": "配额未达到阈值或自动清理未启用"})
+    return JSONResponse({
+        "triggered": True,
+        "deletedCount": result.deleted_count,
+        "freedBytes": result.freed_bytes,
+        "errors": result.errors,
+    })
+
+
+@app.get("/api/storage/trash")
+async def storage_trash_list_api():
+    items = list_trash_items()
+    return JSONResponse({"items": items})
+
+
+@app.post("/api/storage/trash/{job_id}/restore")
+async def storage_trash_restore_api(job_id: str):
+    success = restore_from_trash(job_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"恢复失败：任务 {job_id} 不在回收站或目标位置已存在")
+    return JSONResponse({"ok": True, "job_id": job_id})
+
+
+@app.post("/api/storage/trash/empty")
+async def storage_trash_empty_api():
+    count = empty_trash()
+    return JSONResponse({"ok": True, "deletedCount": count})
 
 
 @app.post("/api/compare/samples/{sample_id}/visuals/generate")
@@ -2662,24 +2944,28 @@ async def startup_event():
     # 初始化结构化日志
     setup_logging(level="INFO", console=True, file=True)
     log.info("Backend starting up...")
-    
+
     resource_monitor.start()
-    
+
     def dispatch_fn(job_id: str):
         _prepare_job_for_dispatch(job_id, "由调度器自动派发")
-    
+
     def status_fn(job_id: str) -> str:
         try:
             job = load_job(job_id)
             return job.status
         except FileNotFoundError:
             return "unknown"
-    
+
     scheduler.configure(dispatch_fn, status_fn)
     scheduler.start()
+
+    # 启动自动清理后台线程
+    start_auto_clean()
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     scheduler.stop()
     resource_monitor.stop()
+    stop_auto_clean()

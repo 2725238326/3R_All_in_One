@@ -1,13 +1,15 @@
 import type React from "react";
 import { WorkspaceTab } from "./App";
-import { 
-  ListTodo, 
-  Plus, 
-  FlaskConical, 
-  LayoutGrid, 
-  Rocket, 
+import {
+  ListTodo,
+  Plus,
+  FlaskConical,
+  LayoutGrid,
+  Rocket,
+  HardDrive,
   Settings,
   Activity,
+  LayoutDashboard,
   type LucideIcon
 } from "lucide-react";
 
@@ -38,7 +40,9 @@ export function Sidebar({ activeWorkspace, onWorkspaceChange, summary }: Sidebar
     { key: "compare", label: "对比面板", Icon: FlaskConical },
     { key: "samples", label: "样例矩阵", Icon: LayoutGrid },
     { key: "development", label: "研发加速", Icon: Rocket },
+    { key: "storage", label: "存储管理", Icon: HardDrive },
     { key: "system", label: "系统配置", Icon: Settings },
+    { key: "dashboard", label: "仪表板", Icon: LayoutDashboard },
   ];
 
   return (

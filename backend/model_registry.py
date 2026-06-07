@@ -115,6 +115,7 @@ MODEL_REGISTRY: dict[str, ModelSpec] = {
         family="video_depth_consistency",
         runner_status="runner_ready",
         research_priority=94,
+        active_track=True,
     ),
     "cut3r": ModelSpec(
         value="cut3r",
@@ -126,6 +127,7 @@ MODEL_REGISTRY: dict[str, ModelSpec] = {
         family="streaming_state_reconstruction",
         runner_status="validated_smoke",
         research_priority=88,
+        active_track=True,
     ),
 }
 

@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useAppStore } from "./store/appStore";
 import type {
   AdvisorConfig,
   AdvisorDiagnostics,
@@ -87,10 +88,12 @@ import { InspectWorkspace } from "./InspectWorkspace";
 import { CompareBoard, CompareBoardInline } from "./CompareBoard";
 import { filterRunnableModels, modelCompatibilityHint } from "./compareHelpers";
 import { PointCloudViewer } from "./PointCloudViewer";
+import { StoragePanel } from "./StoragePanel";
+import { DashboardPanel } from "./DashboardPanel";
 
 export type ServiceState = "starting" | "ready" | "degraded";
 export type JobFilter = "all" | "running" | "attention" | "finished";
-export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "system";
+export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "system" | "storage" | "dashboard";
 export type CreateMode = "single" | "batch";
 
 type JobSocketEvent =
@@ -113,64 +116,108 @@ function applyJobListItem(current: JobListItem[], next: JobListItem) {
 }
 
 function App() {
-  const [appState, setAppState] = useState<AppState | null>(null);
-  const [jobs, setJobs] = useState<JobsListPayload["jobs"]>([]);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [selectedInspection, setSelectedInspection] = useState<InspectionPacket | null>(null);
-  const [samplesPayload, setSamplesPayload] = useState<SamplesPayload | null>(null);
-  const [samplesError, setSamplesError] = useState<string | null>(null);
-  const [developmentLanes, setDevelopmentLanes] = useState<DevelopmentLaneItem[]>([]);
-  const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatusPayload | null>(null);
-  const [deploymentError, setDeploymentError] = useState<string | null>(null);
+  // Zustand store
+  const {
+    // 服务状态
+    serviceState,
+    serviceMessage,
+    backendStatus,
+    appState,
+    // 任务状态
+    jobs,
+    selectedJobId,
+    selectedInspection,
+    // UI 状态
+    activeWorkspace,
+    submitting,
+    actionKey,
+    batchActionKey,
+    batchSubmitting,
+    errorMessage,
+    infoMessage,
+    previewAsset,
+    uploadProgress,
+    savingEvaluation,
+    // 表单状态
+    formState,
+    files,
+    createMode,
+    selectedModels,
+    batchAutoDispatch,
+    // 数据面板
+    samplesPayload,
+    samplesError,
+    developmentLanes,
+    deploymentStatus,
+    deploymentError,
+    // 对比面板
+    compareSampleId,
+    comparePacket,
+    compareLoading,
+    compareError,
+    // 顾问状态
+    advisorModalOpen,
+    advisorProviders,
+    advisorDiagnostics,
+    advisorForm,
+    advisorConfigLoading,
+    advisorConfigSaving,
+    validationResponse,
+    recommendModalOpen,
+    recommendResult,
+    diagnoseModalOpen,
+    diagnoseResult,
+    // Actions
+    setServiceState,
+    setServiceMessage,
+    setBackendStatus,
+    setAppState,
+    setJobs,
+    updateJobInList,
+    setSelectedJobId,
+    setSelectedInspection,
+    setActiveWorkspace,
+    setSubmitting,
+    setActionKey,
+    setBatchActionKey,
+    setBatchSubmitting,
+    setErrorMessage,
+    setInfoMessage,
+    setPreviewAsset,
+    setUploadProgress,
+    setSavingEvaluation,
+    setFormState,
+    resetFormState,
+    setFiles,
+    addFiles,
+    clearFiles,
+    setCreateMode,
+    setSelectedModels,
+    toggleModelSelection,
+    setBatchAutoDispatch,
+    setSamplesPayload,
+    setSamplesError,
+    setDevelopmentLanes,
+    setDeploymentStatus,
+    setCompareSampleId,
+    setComparePacket,
+    setCompareLoading,
+    setCompareError,
+    setAdvisorModalOpen,
+    setAdvisorProviders,
+    setAdvisorDiagnostics,
+    setAdvisorForm,
+    setAdvisorConfigLoading,
+    setAdvisorConfigSaving,
+    setValidationResponse,
+    setRecommendModalOpen,
+    setRecommendResult,
+    setDiagnoseModalOpen,
+    setDiagnoseResult,
+  } = useAppStore();
+
+  // 本地状态（尚未迁移到 store）
   const [deploymentLoading, setDeploymentLoading] = useState(false);
-  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>("queue");
-  const [backendStatus, setBackendStatus] = useState<BackendStatusPayload | null>(null);
-  const [serviceState, setServiceState] = useState<ServiceState>("starting");
-  const [serviceMessage, setServiceMessage] = useState("正在准备本地服务...");
-  const [submitting, setSubmitting] = useState(false);
-  const [actionKey, setActionKey] = useState<string | null>(null);
-  const [batchActionKey, setBatchActionKey] = useState<BatchJobAction | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [savingEvaluation, setSavingEvaluation] = useState(false);
-  const [previewAsset, setPreviewAsset] = useState<PreviewAsset | null>(null);
-  const [advisorModalOpen, setAdvisorModalOpen] = useState(false);
-  const [advisorConfigLoading, setAdvisorConfigLoading] = useState(false);
-  const [advisorConfigSaving, setAdvisorConfigSaving] = useState(false);
-  const [advisorProviders, setAdvisorProviders] = useState<AdvisorProvider[]>([]);
-  const [advisorDiagnostics, setAdvisorDiagnostics] = useState<AdvisorDiagnostics | null>(null);
-  const [advisorForm, setAdvisorForm] = useState<AdvisorConfig>({
-    enabled: false,
-    baseUrl: "",
-    apiKey: "",
-    model: "gpt-4o-mini",
-    maxTokens: 2048,
-    systemPrompt: "",
-    structuredOutput: true,
-    timeoutSeconds: 60,
-  });
-  const [validationResponse, setValidationResponse] = useState<ValidationCreateResponse | null>(null);
-  const [formState, setFormState] = useState<{
-    model: string;
-    source_type: string;
-    notes: string;
-    params: Record<string, any>;
-  }>({
-    model: "dust3r",
-    source_type: "images",
-    notes: "",
-    params: {}
-  });
-  const [createMode, setCreateMode] = useState<CreateMode>("single");
-  const [selectedModels, setSelectedModels] = useState<string[]>([]);
-  const [batchAutoDispatch, setBatchAutoDispatch] = useState(false);
-  const [batchSubmitting, setBatchSubmitting] = useState(false);
-  const [compareSampleId, setCompareSampleId] = useState<string | null>(null);
-  const [comparePacket, setComparePacket] = useState<ComparePacket | null>(null);
-  const [compareLoading, setCompareLoading] = useState(false);
-  const [compareError, setCompareError] = useState<string | null>(null);
   const selectedJobIdRef = useRef<string | null>(null);
 
   const modelCatalog = useMemo(() => appState?.modelCatalog ?? [], [appState]);
@@ -326,7 +373,7 @@ function App() {
           return;
         }
         if (payload.type === "job.updated") {
-          setJobs((current) => applyJobListItem(current, payload.list_item));
+          setJobs(applyJobListItem(jobs, payload.list_item));
           if (payload.inspection && selectedJobIdRef.current === payload.job_id) {
             setSelectedInspection(payload.inspection);
           }
@@ -449,9 +496,7 @@ function App() {
   }
 
   function toggleBatchModel(model: string) {
-    setSelectedModels((prev) =>
-      prev.includes(model) ? prev.filter((m) => m !== model) : [...prev, model]
-    );
+    toggleModelSelection(model);
   }
 
   function openCompareBoard(sampleId: string) {
@@ -514,7 +559,7 @@ function App() {
     if (action === "submit") handleCreateJob();
     if (action === "clear") {
       setFiles([]);
-      setFormState(prev => ({ ...prev, notes: "", params: {} }));
+      setFormState({ notes: "", params: {} });
     }
     if (action === "dispatch" && selectedJobId) postJobAction(`/api/jobs/${selectedJobId}/dispatch`, "dispatch");
     if (action === "retry" && selectedJobId) postJobAction(`/api/jobs/${selectedJobId}/retry`, "retry");
@@ -536,7 +581,7 @@ function App() {
     try {
       const payload = await fetchJson<JobPayload>(path, { method: "POST" });
       setInfoMessage(buildActionMessage(key, payload.job.job_id));
-      setJobs((current) => applyJobListItem(current, { job: payload.job, phase_display: payload.phase_display }));
+      setJobs(applyJobListItem(jobs, { job: payload.job, phase_display: payload.phase_display }));
       if (selectedJobId === payload.job.job_id) {
         loadInspection(selectedJobId, false);
       }
@@ -558,21 +603,59 @@ function App() {
         body: JSON.stringify({ job_ids: jobIds }),
       });
       const successful = payload.results.filter((item) => item.success);
-      for (const item of successful) {
-        const listItem = item.list_item ?? (item.job ? { job: item.job.job, phase_display: item.job.phase_display } : null);
-        if (listItem) {
-          setJobs((current) => applyJobListItem(current, listItem));
-        }
+      if (action === "dispatch") {
+        setInfoMessage(`已派发 ${successful.length} 个任务`);
+      } else if (action === "cancel") {
+        setInfoMessage(`已取消 ${successful.length} 个任务`);
       }
-      setInfoMessage(`批量${batchActionLabel(action)}完成：${successful.length}/${payload.results.length} 个任务成功。`);
-      const failed = payload.results.filter((item) => !item.success);
-      if (failed.length > 0) {
-        setErrorMessage(failed.map((item) => `${item.job_id}: ${item.error ?? "操作失败"}`).join("；"));
-      }
-    } catch (e) {
-      setErrorMessage(friendlyError(e, `批量${batchActionLabel(action)}失败。`));
+      loadJobs();
+    } catch (e: any) {
+      setErrorMessage(e?.message || "执行批量操作失败");
     } finally {
       setBatchActionKey(null);
+    }
+  }
+
+  async function handleBatchDelete(jobIds: string[]) {
+    if (jobIds.length === 0) return;
+    setBatchActionKey("delete");
+    try {
+      const payload = await fetchJson<BatchJobsResponse>("/api/jobs/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_ids: jobIds }),
+      });
+      const successful = payload.results.filter((item) => item.success);
+      setInfoMessage(`已删除 ${successful.length} 个任务`);
+      loadJobs();
+    } catch (e: any) {
+      setErrorMessage(e?.message || "批量删除失败");
+    } finally {
+      setBatchActionKey(null);
+    }
+  }
+
+  async function handleRecommendParams(jobId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/advisor/jobs/${jobId}/recommend`);
+      if (!res.ok) throw new Error("参数推荐失败");
+      const data = await res.json();
+      setRecommendResult(data);
+      setRecommendModalOpen(true);
+    } catch (e: any) {
+      setErrorMessage(e?.message || "参数推荐失败");
+    }
+  }
+
+  async function handleDiagnoseFailure(jobId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/advisor/jobs/${jobId}/diagnose`);
+      if (!res.ok) throw new Error("故障诊断失败");
+      const data = await res.json();
+      setDiagnoseResult(data);
+      setDiagnoseModalOpen(true);
+    } catch (e: any) {
+      setErrorMessage(e?.message || "故障诊断失败");
     }
   }
 
@@ -614,28 +697,26 @@ function App() {
 
   function updateFormField(key: string, value: any) {
     if (key === "model" || key === "source_type" || key === "notes") {
-      setFormState((current) => ({ ...current, [key]: value }));
+      setFormState({ [key]: value });
     } else {
-      setFormState((current) => ({
-        ...current,
-        params: { ...current.params, [key]: value }
-      }));
+      setFormState({
+        params: { ...formState.params, [key]: value }
+      });
     }
   }
 
   async function updateModel(value: string) {
-    setFormState(prev => ({ ...prev, model: value, params: {} }));
+    setFormState({ model: value, params: {} });
     if (!modelContracts[value]) {
       try {
         const contract = await fetchJson<ModelContract>(`/api/models/${value}/contract`);
         const sourceTypes = contract.allowedSourceTypes || (contract as any).sourceTypes || [];
         const fields = contract.paramSchema?.fields || [];
-        setAppState(prev => prev ? { ...prev, modelContracts: { ...prev.modelContracts, [value]: contract } } : null);
-        setFormState(prev => ({
-          ...prev,
+        setAppState(appState ? { ...appState, modelContracts: { ...appState.modelContracts, [value]: contract } } : null);
+        setFormState({
           source_type: sourceTypes[0] || "images",
           params: fields.reduce((acc, f) => ({ ...acc, [f.key]: f.default }), {})
-        }));
+        });
       } catch (e) {
         setErrorMessage("加载模型契约失败");
       }
@@ -672,6 +753,7 @@ function App() {
               onCancelJob={(id) => void postJobAction(`/api/jobs/${id}/cancel`, "cancel")}
               onBatchDispatch={(ids) => void postBatchJobAction("dispatch", ids)}
               onBatchCancel={(ids) => void postBatchJobAction("cancel", ids)}
+              onBatchDelete={handleBatchDelete}
               batchActionBusy={batchActionKey}
             />
           )}
@@ -820,7 +902,7 @@ function App() {
                           <div className="file-item" key={`${file.name}-${file.size}`}>
                             <span className="file-name">{file.name}</span>
                             <span className="file-size">{formatFileSize(file.size)}</span>
-                            <button className="file-remove" type="button" onClick={() => setFiles(prev => prev.filter(f => f !== file))}>×</button>
+                            <button className="file-remove" type="button" onClick={() => setFiles(files.filter(f => f !== file))}>×</button>
                           </div>
                         ))}
                         {files.length > 6 && <div className="file-item more">+{files.length - 6} 个文件</div>}
@@ -945,25 +1027,27 @@ function App() {
 
           {activeWorkspace === "system" && (
             <SystemWorkbench
-              appState={appState}
-              deploymentStatus={deploymentStatus}
-              deploymentError={deploymentError}
-              deploymentLoading={deploymentLoading}
-              loadDeploymentStatus={loadDeploymentStatus}
-              advisorReady={advisorReady}
-              advisorState={advisorState}
-              advisorConfigLoading={advisorConfigLoading}
-              openAdvisorSettings={openAdvisorSettings}
-              activeModelCatalog={modelCatalog.filter(m => m.active_track)}
-              deferredModelCatalog={modelCatalog.filter(m => !m.active_track)}
-              samplesPayload={samplesPayload}
-              samplesError={samplesError}
-              modelCatalog={modelCatalog}
-              openWorkspace={(w: string, id?: string) => { if (id) handleInspectJob(id); else handleWorkspaceChange(w as any); }}
-              copyText={async (v: string, l: string) => { await navigator.clipboard.writeText(v); setInfoMessage(`${l}已复制`); }}
-              serviceMessage={serviceMessage}
               backendStatus={backendStatus}
+              serviceState={serviceState}
+              serviceMessage={serviceMessage}
+              advisorState={advisorState}
+              advisorReady={advisorReady}
+              deploymentStatus={deploymentStatus}
+              modelCatalog={modelCatalog}
+              openAdvisorSettings={openAdvisorSettings}
+              loadDeploymentStatus={loadDeploymentStatus}
+              selectedJobId={selectedJobId}
+              onRecommendParams={handleRecommendParams}
+              onDiagnoseFailure={handleDiagnoseFailure}
             />
+          )}
+
+          {activeWorkspace === "storage" && (
+            <StoragePanel />
+          )}
+
+          {activeWorkspace === "dashboard" && (
+            <DashboardPanel />
           )}
         </main>
       </div>
@@ -976,12 +1060,59 @@ function App() {
               <button className="ghost-button small" onClick={() => setAdvisorModalOpen(false)}>关闭</button>
             </div>
             <form className="form-stack settings-form" onSubmit={saveAdvisorSettings}>
-              <label className="field"><span>启用</span><input type="checkbox" checked={advisorForm.enabled} onChange={e => setAdvisorForm(c => ({...c, enabled: e.target.checked}))} /></label>
-              <label className="field"><span>Provider</span><select value={advisorForm.model} onChange={e => setAdvisorForm(c => ({...c, model: e.target.value}))}>{advisorProviders.map(p => <optgroup key={p.id} label={p.label}>{p.models.map(m => <option key={m} value={m}>{m}</option>)}</optgroup>)}</select></label>
-              <label className="field"><span>Base URL</span><input value={advisorForm.baseUrl} onChange={e => setAdvisorForm(c => ({...c, baseUrl: e.target.value}))} /></label>
-              <label className="field"><span>API Key</span><input type="password" value={advisorForm.apiKey} onChange={e => setAdvisorForm(c => ({...c, apiKey: e.target.value}))} placeholder={advisorForm.hasApiKey ? "已保存" : "输入 Key"} /></label>
+              <label className="field"><span>启用</span><input type="checkbox" checked={advisorForm.enabled} onChange={e => setAdvisorForm({ enabled: e.target.checked })} /></label>
+              <label className="field"><span>Provider</span><select value={advisorForm.model} onChange={e => setAdvisorForm({ model: e.target.value })}>{advisorProviders.map(p => <optgroup key={p.id} label={p.label}>{p.models.map(m => <option key={m} value={m}>{m}</option>)}</optgroup>)}</select></label>
+              <label className="field"><span>Base URL</span><input value={advisorForm.baseUrl} onChange={e => setAdvisorForm({ baseUrl: e.target.value })} /></label>
+              <label className="field"><span>API Key</span><input type="password" value={advisorForm.apiKey} onChange={e => setAdvisorForm({ apiKey: e.target.value })} placeholder={advisorForm.hasApiKey ? "已保存" : "输入 Key"} /></label>
               <div className="settings-modal-actions"><button className="primary-button" type="submit">保存</button></div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {recommendModalOpen && recommendResult && (
+        <div className="settings-modal-backdrop" onClick={() => setRecommendModalOpen(false)}>
+          <div className="settings-modal" onClick={e => e.stopPropagation()}>
+            <div className="preview-modal-head">
+              <strong>参数推荐</strong>
+              <button className="ghost-button small" onClick={() => setRecommendModalOpen(false)}>关闭</button>
+            </div>
+            <div style={{ padding: "16px" }}>
+              <p className="dense-text">{recommendResult.message}</p>
+              {recommendResult.has_recommendations && recommendResult.recommended_params && (
+                <div style={{ marginTop: "12px" }}>
+                  <strong>推荐参数：</strong>
+                  <pre style={{ background: "var(--surface-soft, #fafafa)", padding: "12px", borderRadius: "6px", marginTop: "8px", fontSize: "12px" }}>
+                    {JSON.stringify(recommendResult.recommended_params, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {diagnoseModalOpen && diagnoseResult && (
+        <div className="settings-modal-backdrop" onClick={() => setDiagnoseModalOpen(false)}>
+          <div className="settings-modal" onClick={e => e.stopPropagation()}>
+            <div className="preview-modal-head">
+              <strong>故障诊断</strong>
+              <button className="ghost-button small" onClick={() => setDiagnoseModalOpen(false)}>关闭</button>
+            </div>
+            <div style={{ padding: "16px" }}>
+              <div style={{ marginBottom: "12px" }}>
+                <strong>诊断结果：</strong>
+                <ul style={{ marginTop: "8px", paddingLeft: "20px" }}>
+                  {diagnoseResult.diagnosis.map((d: string, i: number) => <li key={i}>{d}</li>)}
+                </ul>
+              </div>
+              <div>
+                <strong>建议：</strong>
+                <ul style={{ marginTop: "8px", paddingLeft: "20px" }}>
+                  {diagnoseResult.suggestions.map((s: string, i: number) => <li key={i}>{s}</li>)}
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       )}

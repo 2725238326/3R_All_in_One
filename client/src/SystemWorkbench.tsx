@@ -22,6 +22,9 @@ export interface SystemWorkbenchProps {
   modelCatalog: ModelCatalogItem[];
   openAdvisorSettings: () => void;
   loadDeploymentStatus: (showError?: boolean, forceRefresh?: boolean) => void;
+  selectedJobId: string | null;
+  onRecommendParams?: (jobId: string) => void;
+  onDiagnoseFailure?: (jobId: string) => void;
 }
 
 export function SystemWorkbench(props: SystemWorkbenchProps) {
@@ -62,10 +65,26 @@ export function SystemWorkbench(props: SystemWorkbenchProps) {
               {props.advisorReady ? `就绪 · ${props.advisorState.model}` : "未配置"}
             </span>
           </div>
-          <div style={{ marginTop: "12px" }}>
+          <div style={{ marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
             <button className="ghost-button small" onClick={props.openAdvisorSettings}>
               打开配置
             </button>
+            {props.selectedJobId && props.advisorReady && (
+              <>
+                <button
+                  className="ghost-button small"
+                  onClick={() => props.selectedJobId && props.onRecommendParams?.(props.selectedJobId)}
+                >
+                  参数推荐
+                </button>
+                <button
+                  className="ghost-button small"
+                  onClick={() => props.selectedJobId && props.onDiagnoseFailure?.(props.selectedJobId)}
+                >
+                  故障诊断
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

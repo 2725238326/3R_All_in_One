@@ -17,11 +17,11 @@ import type {
   ComparePacket,
   ValidationCreateResponse,
 } from "../types";
-import type { JobListItem } from "../workflowHelpers";
+import type { JobListItem, BatchJobAction } from "../workflowHelpers";
 import type { PreviewAsset } from "../JobDetail";
 
 export type ServiceState = "starting" | "ready" | "degraded";
-export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "system";
+export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "system" | "storage" | "dashboard";
 export type CreateMode = "single" | "batch";
 
 interface AppStore {
@@ -40,9 +40,13 @@ interface AppStore {
   activeWorkspace: WorkspaceTab;
   submitting: boolean;
   actionKey: string | null;
+  batchActionKey: BatchJobAction | null;
+  batchSubmitting: boolean;
   errorMessage: string | null;
   infoMessage: string | null;
   previewAsset: PreviewAsset | null;
+  uploadProgress: number | null;
+  savingEvaluation: boolean;
   
   // ─────────────── 表单状态 ───────────────
   formState: {
@@ -74,7 +78,13 @@ interface AppStore {
   advisorProviders: AdvisorProvider[];
   advisorDiagnostics: AdvisorDiagnostics | null;
   advisorForm: AdvisorConfig;
+  advisorConfigLoading: boolean;
+  advisorConfigSaving: boolean;
   validationResponse: ValidationCreateResponse | null;
+  recommendModalOpen: boolean;
+  recommendResult: any;
+  diagnoseModalOpen: boolean;
+  diagnoseResult: any;
   
   // ─────────────── Actions ───────────────
   setServiceState: (state: ServiceState) => void;
@@ -90,9 +100,13 @@ interface AppStore {
   setActiveWorkspace: (tab: WorkspaceTab) => void;
   setSubmitting: (submitting: boolean) => void;
   setActionKey: (key: string | null) => void;
+  setBatchActionKey: (key: BatchJobAction | null) => void;
+  setBatchSubmitting: (submitting: boolean) => void;
   setErrorMessage: (message: string | null) => void;
   setInfoMessage: (message: string | null) => void;
   setPreviewAsset: (asset: PreviewAsset | null) => void;
+  setUploadProgress: (progress: number | null) => void;
+  setSavingEvaluation: (saving: boolean) => void;
   
   setFormState: (state: Partial<AppStore["formState"]>) => void;
   resetFormState: () => void;
@@ -115,8 +129,16 @@ interface AppStore {
   setCompareError: (error: string | null) => void;
   
   setAdvisorModalOpen: (open: boolean) => void;
+  setAdvisorProviders: (providers: AdvisorProvider[]) => void;
+  setAdvisorDiagnostics: (diagnostics: AdvisorDiagnostics | null) => void;
   setAdvisorForm: (form: Partial<AdvisorConfig>) => void;
+  setAdvisorConfigLoading: (loading: boolean) => void;
+  setAdvisorConfigSaving: (saving: boolean) => void;
   setValidationResponse: (response: ValidationCreateResponse | null) => void;
+  setRecommendModalOpen: (open: boolean) => void;
+  setRecommendResult: (result: any) => void;
+  setDiagnoseModalOpen: (open: boolean) => void;
+  setDiagnoseResult: (result: any) => void;
 }
 
 const initialFormState = {
@@ -153,9 +175,13 @@ export const useAppStore = create<AppStore>()(
       activeWorkspace: "queue",
       submitting: false,
       actionKey: null,
+      batchActionKey: null,
+      batchSubmitting: false,
       errorMessage: null,
       infoMessage: null,
       previewAsset: null,
+      uploadProgress: null,
+      savingEvaluation: false,
       
       formState: initialFormState,
       files: [],
@@ -178,7 +204,13 @@ export const useAppStore = create<AppStore>()(
       advisorProviders: [],
       advisorDiagnostics: null,
       advisorForm: initialAdvisorForm,
+      advisorConfigLoading: false,
+      advisorConfigSaving: false,
       validationResponse: null,
+      recommendModalOpen: false,
+      recommendResult: null,
+      diagnoseModalOpen: false,
+      diagnoseResult: null,
       
       // ─────────────── Actions ───────────────
       setServiceState: (state) => set({ serviceState: state }),
@@ -200,9 +232,13 @@ export const useAppStore = create<AppStore>()(
       setActiveWorkspace: (tab) => set({ activeWorkspace: tab }),
       setSubmitting: (submitting) => set({ submitting }),
       setActionKey: (key) => set({ actionKey: key }),
+      setBatchActionKey: (key) => set({ batchActionKey: key }),
+      setBatchSubmitting: (submitting) => set({ batchSubmitting: submitting }),
       setErrorMessage: (message) => set({ errorMessage: message }),
       setInfoMessage: (message) => set({ infoMessage: message }),
       setPreviewAsset: (asset) => set({ previewAsset: asset }),
+      setUploadProgress: (progress) => set({ uploadProgress: progress }),
+      setSavingEvaluation: (saving) => set({ savingEvaluation: saving }),
       
       setFormState: (partial) => set((state) => ({
         formState: { ...state.formState, ...partial },
@@ -234,10 +270,18 @@ export const useAppStore = create<AppStore>()(
       setCompareError: (error) => set({ compareError: error }),
       
       setAdvisorModalOpen: (open) => set({ advisorModalOpen: open }),
+      setAdvisorProviders: (providers) => set({ advisorProviders: providers }),
+      setAdvisorDiagnostics: (diagnostics) => set({ advisorDiagnostics: diagnostics }),
       setAdvisorForm: (partial) => set((state) => ({
         advisorForm: { ...state.advisorForm, ...partial },
       })),
+      setAdvisorConfigLoading: (loading) => set({ advisorConfigLoading: loading }),
+      setAdvisorConfigSaving: (saving) => set({ advisorConfigSaving: saving }),
       setValidationResponse: (response) => set({ validationResponse: response }),
+      setRecommendModalOpen: (open) => set({ recommendModalOpen: open }),
+      setRecommendResult: (result) => set({ recommendResult: result }),
+      setDiagnoseModalOpen: (open) => set({ diagnoseModalOpen: open }),
+      setDiagnoseResult: (result) => set({ diagnoseResult: result }),
     }),
     { name: "3R-AppStore" }
   )

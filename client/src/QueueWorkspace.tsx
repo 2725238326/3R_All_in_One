@@ -3,7 +3,7 @@ import { canDispatchJobStatus, JobListItem, matchesJobQuery } from "./workflowHe
 import { formatDateTime, modelDisplayName, sourceTypeLabel, statusLabel } from "./displayHelpers";
 import { StatusBadge } from "./uiPrimitives";
 import { ModelCatalogItem } from "./types";
-import { 
+import {
   Play,
   Clock,
   CheckCircle2,
@@ -11,7 +11,8 @@ import {
   Loader2,
   Square,
   CheckSquare,
-  XCircle
+  XCircle,
+  Trash2
 } from "lucide-react";
 
 interface QueueWorkspaceProps {
@@ -25,20 +26,22 @@ interface QueueWorkspaceProps {
   onCancelJob?: (jobId: string) => void;
   onBatchDispatch?: (jobIds: string[]) => void;
   onBatchCancel?: (jobIds: string[]) => void;
-  batchActionBusy?: "dispatch" | "retry" | "cancel" | null;
+  onBatchDelete?: (jobIds: string[]) => void;
+  batchActionBusy?: "dispatch" | "retry" | "cancel" | "delete" | null;
 }
 
-export function QueueWorkspace({ 
-  jobs, 
-  modelCatalog, 
-  selectedJobId, 
-  onSelectJob, 
+export function QueueWorkspace({
+  jobs,
+  modelCatalog,
+  selectedJobId,
+  onSelectJob,
   onInspectJob,
   onDispatchJob,
   onRetryJob,
   onCancelJob,
   onBatchDispatch,
   onBatchCancel,
+  onBatchDelete,
   batchActionBusy
 }: QueueWorkspaceProps) {
   const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
@@ -83,6 +86,10 @@ export function QueueWorkspace({
   );
   const cancellableBatchIds = useMemo(
     () => selectedBatchItems.filter((item) => item.job.status === "running").map((item) => item.job.job_id),
+    [selectedBatchItems]
+  );
+  const deletableBatchIds = useMemo(
+    () => selectedBatchItems.filter((item) => item.job.status !== "running").map((item) => item.job.job_id),
     [selectedBatchItems]
   );
   const visibleJobIds = useMemo(() => recentJobs.map((item) => item.job.job_id), [recentJobs]);
@@ -142,7 +149,7 @@ export function QueueWorkspace({
         <div className="queue-batch-strip">
           <div className="queue-batch-summary">
             <strong>已选择 {selectedBatchIds.length} 个任务</strong>
-            <span>{dispatchableBatchIds.length} 个可派发，{cancellableBatchIds.length} 个可取消</span>
+            <span>{dispatchableBatchIds.length} 个可派发，{cancellableBatchIds.length} 个可取消，{deletableBatchIds.length} 个可删除</span>
           </div>
           <div className="queue-batch-actions">
             <button
@@ -160,6 +167,18 @@ export function QueueWorkspace({
               type="button"
             >
               <XCircle size={12} /> 批量取消
+            </button>
+            <button
+              className="icon-btn danger"
+              disabled={!onBatchDelete || deletableBatchIds.length === 0 || !!batchActionBusy}
+              onClick={() => {
+                if (confirm(`确认删除 ${deletableBatchIds.length} 个任务？此操作不可撤销。`)) {
+                  onBatchDelete?.(deletableBatchIds);
+                }
+              }}
+              type="button"
+            >
+              <Trash2 size={12} /> 批量删除
             </button>
             <button className="icon-btn" onClick={() => setSelectedBatchIds([])} type="button">
               清空

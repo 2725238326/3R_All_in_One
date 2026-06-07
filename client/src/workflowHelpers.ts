@@ -6,7 +6,7 @@ import {
 } from "./displayHelpers";
 import type { ModelCatalogItem } from "./displayHelpers";
 
-export type BatchJobAction = "dispatch" | "retry" | "cancel";
+export type BatchJobAction = "dispatch" | "retry" | "cancel" | "delete";
 export type JobListItem = JobsListPayload["jobs"][number];
 
 export function buildCaptureChecklist(model: string, sourceType: string, fileCount: number) {
