@@ -39,14 +39,30 @@ All notable changes to this project will be documented in this file.
 - 崩溃恢复 / 状态 reconcile（启动时修复孤儿任务）
 - Runner 统一接口（RunnerBase + SSH/Docker/OnlineAPI 三实现）
 - Zustand 渐进迁移 hooks（useUIState.ts）
+- Agent 后端 API：`/api/agent/registry`、`/api/agent/validate`、后台环境构建任务接口
+- AgentWorkbench 前端工作台：蓝图状态、校验摘要、模型详情、后台构建任务状态
+- 发布检查脚本 `tools/release_check.py`：版本对齐、Agent 校验、Python 测试、前端构建和 Docker Compose 配置检查
+- 发布依赖清单补齐 loguru/psutil 等运行依赖
+- 开发/打包依赖声明补齐 PyInstaller
+- Docker 生产镜像改为 Python 3.11，保留 backend/agent/runners/samples/tools 运行时布局
+- Docker health check 统一到 `/api/health`
+- PyInstaller 后端侧车打包纳入 Agent 蓝图、根级 runner 脚本和 React 构建产物
+- Tauri NSIS 正式安装包路径验证：`3R All-in-One_0.5.0_x64-setup.exe`
 
 ### Changed
 - QueueWorkspace 默认展示 50 条任务（原 10 条）
 - Docker Runner 和 Online API Runner 仅作为可选后备（不在默认 UI 显示）
+- FastAPI 启动/关闭流程迁移到 lifespan，移除 `@app.on_event` 弃用用法
+- Agent CLI 状态输出改为 ASCII 标记，避免 Windows GBK 控制台编码失败
+- HealthDoctor 从诊断方案中提取反引号命令作为 `fix_command`，常见可修复错误会正确归类为 fixable
+- Agent `smoke` CLI 使用 `SmokeReport.ready/smoke_output`，修复远程 smoke 成功后仍因字段名错误崩溃的问题
+- Vite 构建按 React/Recharts/Three/lucide 拆分 vendor chunks，消除正式构建大块警告
 
 ### Fixed
 - `runners/__init__.py` 导入 docker 模块时 try/except 防止 ImportError
-- 116 个后端测试全部通过
+- `/api/runners/availability` 在缺少可选 Docker runner 模块时返回 `docker: false`，不再抛出 500
+- 远程 `python -m agent health/smoke/build dust3r --alias KYKT-UI` 验证通过
+- 130 个后端/Agent 测试全部通过，1 个创建任务流程测试按设计跳过
 
 ## [v0.4.0] - 2026-05-25
 

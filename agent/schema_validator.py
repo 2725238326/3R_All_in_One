@@ -50,7 +50,7 @@ class ValidationResult:
     
     def summary(self) -> str:
         e, w = len(self.errors), len(self.warnings)
-        status = "✓ VALID" if self.valid else "✗ INVALID"
+        status = "[OK] VALID" if self.valid else "[FAIL] INVALID"
         return f"{self.model}: {status} ({e} errors, {w} warnings)"
 
 
@@ -313,9 +313,9 @@ def main():
     for r in results:
         print(r.summary())
         for issue in r.errors:
-            print(f"  ✗ {issue.field}: {issue.message}")
+            print(f"  [ERROR] {issue.field}: {issue.message}")
         for issue in r.warnings:
-            print(f"  ⚠ {issue.field}: {issue.message}")
+            print(f"  [WARN] {issue.field}: {issue.message}")
     
     print()
     print(f"Total: {valid_count}/{len(results)} valid, {total_errors} errors, {total_warnings} warnings")

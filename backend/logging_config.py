@@ -228,9 +228,9 @@ def log_execution(
             
             # 开始日志
             if include_args:
-                logger.log(level, f"→ {func_name}(args={args}, kwargs={kwargs})")
+                logger.log(level, f"CALL {func_name}(args={args}, kwargs={kwargs})")
             else:
-                logger.log(level, f"→ {func_name}()")
+                logger.log(level, f"CALL {func_name}()")
             
             start = time.perf_counter()
             try:
@@ -238,14 +238,14 @@ def log_execution(
                 elapsed = time.perf_counter() - start
                 
                 if include_result:
-                    logger.log(level, f"← {func_name} returned {result!r} in {elapsed:.3f}s")
+                    logger.log(level, f"DONE {func_name} returned {result!r} in {elapsed:.3f}s")
                 else:
-                    logger.log(level, f"← {func_name} completed in {elapsed:.3f}s")
+                    logger.log(level, f"DONE {func_name} completed in {elapsed:.3f}s")
                 
                 return result
             except Exception as e:
                 elapsed = time.perf_counter() - start
-                logger.error(f"✗ {func_name} failed after {elapsed:.3f}s: {e}")
+                logger.error(f"FAIL {func_name} failed after {elapsed:.3f}s: {e}")
                 raise
         
         return wrapper

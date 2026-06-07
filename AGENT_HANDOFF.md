@@ -235,27 +235,28 @@ Total: 7 | Integrated: 5 | Env Ready: 2 | With Issues: 3
 
 将 `agent/` 模块的 CLI 能力暴露为后端 API：
 
-- [ ] 在 `backend/app.py` 添加 `/api/agent/registry` 端点
-- [ ] 在 `backend/app.py` 添加 `/api/agent/validate` 端点
-- [ ] 在 `backend/app.py` 添加 `/api/agent/build/{model}` 端点（异步任务）
-- [ ] 前端 `client/src/` 添加 `AgentWorkbench.tsx` 组件
+- [x] 在 `backend/app.py` 添加 `/api/agent/registry` 端点
+- [x] 在 `backend/app.py` 添加 `/api/agent/validate` 端点
+- [x] 在 `backend/app.py` 添加 `/api/agent/build/{model}` 端点（异步任务）
+- [x] 前端 `client/src/` 添加 `AgentWorkbench.tsx` 组件
 
 **注意**：`backend/app.py` 已有 91 KB，请**追加路由**到末尾，**不要重写**。
 
 ### 5.2 P1 — 测试与 CI
 
-- [ ] 创建 `tests/` 目录
-- [ ] 写 `tests/test_schema_validator.py`（针对 7 个蓝图）
-- [ ] 写 `tests/test_registry.py`（注册表 API）
-- [ ] 写 `tests/test_health_doctor.py`（错误模式匹配）
+- [x] 创建 `tests/` 目录
+- [x] 写 `tests/agent/test_schema_validator.py`（针对 7 个蓝图）
+- [x] 写 `tests/agent/test_registry.py` 与后端 Agent API 覆盖
+- [x] 写 `tests/agent/test_health_doctor.py`（错误模式匹配）
 
 ### 5.3 P2 — 真实远程构建验证
 
-在远程服务器上跑一次 `python -m agent build dust3r`，验证：
-- conda env 创建
-- pip 依赖安装
-- curope 编译
-- health checks 通过
+[x] 已在远程服务器上跑通 `python -m agent build dust3r --alias KYKT-UI`（2026-06-08）：
+- conda env 检查通过（env 已存在）
+- pip 依赖安装通过
+- smoke test 通过
+- `python -m agent health dust3r --alias KYKT-UI` 通过
+- DUSt3R 蓝图没有 curope 编译步骤
 
 **前提**：本地 `~/.ssh/config` 已配 `KYKT-UI` alias。
 

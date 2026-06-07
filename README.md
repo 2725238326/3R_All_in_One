@@ -30,6 +30,7 @@
 - **Failure Diagnosis** — Error message visible directly in queue, hover for full detail
 - **Resource Monitor** — GPU/CPU/memory/disk real-time monitoring
 - **Report Export** — HTML/PDF comparison reports with depth heatmaps and GIF animations
+- **Agent Workbench** — Model blueprint registry, validation, and environment build task orchestration
 - **Experiment Agent** — One-click environment setup and batch experiment orchestration
 - **Desktop App** — Tauri 2 desktop shell with embedded backend
 
@@ -87,6 +88,7 @@
 │   │   ├── CompareBoard.tsx     # Comparison board
 │   │   ├── ParamTemplates.tsx   # Param template selector
 │   │   ├── QueueWorkspace.tsx   # Queue with search & filter
+│   │   ├── AgentWorkbench.tsx   # Agent blueprint and environment orchestration
 │   │   ├── uploadProgress.ts   # Upload progress utility
 │   │   ├── store/appStore.ts   # Zustand global store
 │   │   └── hooks/              # Custom hooks
@@ -98,7 +100,7 @@
 │   ├── monst3r_runner.py
 │   ├── spann3r_runner.py
 │   └── fast3r_runner.py
-├── tests/                 # Backend tests (116 passing)
+├── tests/                 # Backend/Agent tests (130 passing, 1 skipped)
 │   └── backend/
 ├── agent/                 # One-click setup & experiment orchestration
 │   ├── model_specs/
@@ -142,6 +144,23 @@ npm run dev
 ```bash
 cd client
 npm run tauri build
+```
+
+### Release Verification
+
+```bash
+python tools/release_check.py
+```
+
+The release gate checks version alignment, Agent blueprint validity, backend tests,
+frontend build output, and Docker Compose syntax when Docker is installed.
+
+For a Windows desktop release, also run:
+
+```powershell
+.\tools\build_backend.ps1
+cd client
+npm run desktop:build
 ```
 
 ## Version History

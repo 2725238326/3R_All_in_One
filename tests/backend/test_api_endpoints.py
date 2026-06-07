@@ -73,6 +73,59 @@ class TestModelsEndpoints:
         assert response.status_code in (200, 404)
 
 
+class TestRunnerEndpoints:
+    """执行器可用性端点测试"""
+
+    def test_runner_availability_handles_optional_runners(self, test_client: TestClient):
+        """/api/runners/availability 不应因缺少可选 runner 模块崩溃"""
+        response = test_client.get("/api/runners/availability")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["ssh"] is True
+        assert isinstance(data["docker"], bool)
+        assert isinstance(data["online_api"], bool)
+
+
+class TestAgentEndpoints:
+    """Agent 蓝图与编排端点测试"""
+
+    def test_agent_registry(self, test_client: TestClient):
+        """/api/agent/registry 应返回 7 个模型蓝图"""
+        response = test_client.get("/api/agent/registry")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["summary"]["total"] == 7
+        assert len(data["models"]) == 7
+        assert {model["key"] for model in data["models"]} >= {"dust3r", "monst3r", "fast3r"}
+
+    def test_agent_model_detail(self, test_client: TestClient):
+        """获取单个 Agent 蓝图详情"""
+        response = test_client.get("/api/agent/registry/monst3r")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["key"] == "monst3r"
+        assert data["environment"]["conda_env"] == "monst3r"
+        assert "param_tiers" in data
+
+    def test_agent_validate_all(self, test_client: TestClient):
+        """校验所有 Agent 蓝图"""
+        response = test_client.get("/api/agent/validate")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["ok"] is True
+        assert data["summary"]["total"] == 7
+        assert data["summary"]["errors"] == 0
+
+    def test_agent_unknown_model(self, test_client: TestClient):
+        """未知 Agent 模型应返回 404"""
+        response = test_client.get("/api/agent/registry/not_a_model")
+        assert response.status_code == 404
+
+
 class TestStaticFiles:
     """静态文件端点测试"""
     

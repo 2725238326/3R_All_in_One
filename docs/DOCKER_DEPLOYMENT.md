@@ -24,7 +24,7 @@ docker-compose logs -f monst3r
 
 - 前端界面: http://localhost:8000
 - API 文档: http://localhost:8000/docs
-- 健康检查: http://localhost:8000/api/status
+- 健康检查: http://localhost:8000/api/health
 
 ### 3. 停止服务
 

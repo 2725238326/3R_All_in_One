@@ -17,10 +17,6 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 
 block_cipher = None
 
-# Ensure user site-packages is included
-import site
-user_site = site.getusersitepackages()
-
 # Collect all backend Python modules
 backend_modules = []
 for py_file in BACKEND_DIR.glob("*.py"):
@@ -41,16 +37,31 @@ samples_manifest = PROJECT_ROOT / "samples" / "samples_manifest.json"
 if samples_manifest.exists():
     datas.append((str(samples_manifest), "samples"))
 
+# Add Agent blueprints and source modules used by /api/agent/*
+agent_dir = PROJECT_ROOT / "agent"
+if agent_dir.exists():
+    datas.append((str(agent_dir), "agent"))
+
 # Add tools scripts if needed for deployment checks
 tools_dir = PROJECT_ROOT / "tools"
 deployment_script = tools_dir / "check_3r_remote.ps1"
 if deployment_script.exists():
     datas.append((str(deployment_script), "tools"))
 
-# Add runners directory if exists
-runners_dir = BACKEND_DIR / "runners"
+# Add remote runner scripts shipped from the bundle root
+runners_dir = PROJECT_ROOT / "runners"
 if runners_dir.exists():
-    datas.append((str(runners_dir), "backend/runners"))
+    datas.append((str(runners_dir), "runners"))
+
+# Add backend runner modules used by /api/runners/availability
+backend_runners_dir = BACKEND_DIR / "runners"
+if backend_runners_dir.exists():
+    datas.append((str(backend_runners_dir), "backend/runners"))
+
+# Add built React client when present so the backend can serve it in frozen mode
+client_dist_dir = PROJECT_ROOT / "client" / "dist"
+if client_dist_dir.exists():
+    datas.append((str(client_dist_dir), "client/dist"))
 
 # Hidden imports that PyInstaller might miss
 hiddenimports = [
@@ -117,11 +128,22 @@ hiddenimports = [
     "state_reconciler",
     "visual_artifacts",
     "loguru",
+    "agent",
+    "agent.cli",
+    "agent.env_builder",
+    "agent.experiment_agent",
+    "agent.health_doctor",
+    "agent.registry",
+    "agent.schema_validator",
+    "agent.smoke_runner",
+    "runners",
+    "runners.online_api",
+    "runners.ssh",
 ]
 
 a = Analysis(
     [str(PROJECT_ROOT / "tools" / "run_backend.py")],
-    pathex=[str(BACKEND_DIR), str(PROJECT_ROOT), user_site],
+    pathex=[str(BACKEND_DIR), str(PROJECT_ROOT)],
     binaries=[],
     datas=datas + backend_modules,
     hiddenimports=hiddenimports,

@@ -5,6 +5,7 @@ import {
   Plus,
   FlaskConical,
   LayoutGrid,
+  Bot,
   Rocket,
   HardDrive,
   Settings,
@@ -40,6 +41,7 @@ export function Sidebar({ activeWorkspace, onWorkspaceChange, summary }: Sidebar
     { key: "compare", label: "对比面板", Icon: FlaskConical },
     { key: "samples", label: "样例矩阵", Icon: LayoutGrid },
     { key: "development", label: "研发加速", Icon: Rocket },
+    { key: "agent", label: "Agent 编排", Icon: Bot },
     { key: "storage", label: "存储管理", Icon: HardDrive },
     { key: "system", label: "系统配置", Icon: Settings },
     { key: "dashboard", label: "仪表板", Icon: LayoutDashboard },
@@ -78,7 +80,7 @@ export function Sidebar({ activeWorkspace, onWorkspaceChange, summary }: Sidebar
       </nav>
 
       <div className="sidebar-footer">
-        <span className="sidebar-version">v0.3.0</span>
+        <span className="sidebar-version">v0.5.0</span>
       </div>
     </aside>
   );

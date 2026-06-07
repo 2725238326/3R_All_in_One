@@ -201,7 +201,7 @@ class ModelRegistry:
         print(f"{'Key':<12} {'Name':<12} {'Type':<18} {'Status':<12} {'GPU(GB)':<8}")
         print("-" * 70)
         for spec in self.sorted_by_priority():
-            issues = f" ⚠{len(spec.unresolved_issues)}" if spec.unresolved_issues else ""
+            issues = f" [WARN:{len(spec.unresolved_issues)}]" if spec.unresolved_issues else ""
             print(
                 f"{spec.key:<12} {spec.name:<12} {spec.model_type:<18} "
                 f"{spec.status:<12} {spec.resources.get('gpu_memory_gb', '?'):<8}{issues}"

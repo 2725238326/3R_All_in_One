@@ -26,7 +26,7 @@ Agent 模块核心职责：
     result = runner.check(spec)
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "KYKT"
 __all__ = [
     # 版本

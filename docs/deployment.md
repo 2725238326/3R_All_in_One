@@ -61,7 +61,28 @@ npm run tauri build
 
 Output:
 - `client/src-tauri/target/release/kykt_vision_client.exe`
-- `client/src-tauri/target/release/bundle/nsis/KYKT Vision Client_0.1.0_x64-setup.exe`
+- `client/src-tauri/target/release/bundle/nsis/3R All-in-One_0.5.0_x64-setup.exe`
+
+## Release Verification
+
+Run the local release gate before creating a release artifact:
+
+```bash
+python tools/release_check.py
+```
+
+This verifies version alignment, Agent blueprint validation, Python tests,
+frontend build output, and Docker Compose configuration when Docker is installed.
+Use `--require-docker` on a machine that has Docker when Docker packaging is a
+release requirement.
+
+For the Windows desktop release, rebuild the backend sidecar and installer:
+
+```powershell
+.\tools\build_backend.ps1
+cd client
+npm run desktop:build
+```
 
 ## SSH Configuration
 

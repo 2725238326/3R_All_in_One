@@ -90,10 +90,11 @@ import { filterRunnableModels, modelCompatibilityHint } from "./compareHelpers";
 import { PointCloudViewer } from "./PointCloudViewer";
 import { StoragePanel } from "./StoragePanel";
 import { DashboardPanel } from "./DashboardPanel";
+import { AgentWorkbench } from "./AgentWorkbench";
 
 export type ServiceState = "starting" | "ready" | "degraded";
 export type JobFilter = "all" | "running" | "attention" | "finished";
-export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "system" | "storage" | "dashboard";
+export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "agent" | "system" | "storage" | "dashboard";
 export type CreateMode = "single" | "batch";
 
 type JobSocketEvent =
@@ -513,6 +514,7 @@ function App() {
       case "samples": return "样例矩阵";
       case "compare": return `对比面板：${compareSampleId || "--"}`;
       case "development": return "研发加速";
+      case "agent": return "Agent 编排";
       case "system": return "系统配置";
     }
   }, [activeWorkspace, selectedJobId, createMode, compareSampleId]);
@@ -1023,6 +1025,10 @@ function App() {
               <DevelopmentCyclePanel items={developmentLanes} />
               <ResearchAccelerationPanel items={developmentLanes} />
             </section>
+          )}
+
+          {activeWorkspace === "agent" && (
+            <AgentWorkbench />
           )}
 
           {activeWorkspace === "system" && (

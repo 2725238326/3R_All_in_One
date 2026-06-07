@@ -32,6 +32,36 @@ export default defineConfig({
   build: {
     target: buildTarget,
     minify: !runtimeEnv.TAURI_ENV_DEBUG ? "esbuild" : false,
-    sourcemap: !!runtimeEnv.TAURI_ENV_DEBUG
+    sourcemap: !!runtimeEnv.TAURI_ENV_DEBUG,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, "/");
+          if (!normalizedId.includes("/node_modules/")) {
+            return undefined;
+          }
+          if (
+            normalizedId.includes("/node_modules/react/") ||
+            normalizedId.includes("/node_modules/react-dom/")
+          ) {
+            return "vendor-react";
+          }
+          if (
+            normalizedId.includes("/node_modules/recharts/") ||
+            normalizedId.includes("/node_modules/d3-")
+          ) {
+            return "vendor-charts";
+          }
+          if (normalizedId.includes("/node_modules/three/")) {
+            return "vendor-three";
+          }
+          if (normalizedId.includes("/node_modules/lucide-react/")) {
+            return "vendor-icons";
+          }
+          return undefined;
+        }
+      }
+    }
   }
 });

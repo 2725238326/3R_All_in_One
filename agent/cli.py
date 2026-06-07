@@ -97,7 +97,7 @@ def cmd_info(args: argparse.Namespace) -> int:
             print(f"       {spec.paper.get('url', '')}")
         
         if spec.unresolved_issues:
-            print(f"\n⚠ Unresolved Issues ({len(spec.unresolved_issues)}):")
+            print(f"\n[WARN] Unresolved Issues ({len(spec.unresolved_issues)}):")
             for issue in spec.unresolved_issues:
                 print(f"  - [{issue.get('id', '?')}] {issue.get('description', '')[:60]}")
         
@@ -123,10 +123,10 @@ def cmd_validate(args: argparse.Namespace) -> int:
         print(result.summary())
         
         for issue in result.issues:
-            prefix = {"error": "✗", "warning": "⚠", "info": "ℹ"}[issue.level]
+            prefix = {"error": "[ERROR]", "warning": "[WARN]", "info": "[INFO]"}[issue.level]
             print(f"  {prefix} {issue.field}: {issue.message}")
             if issue.suggestion:
-                print(f"    → {issue.suggestion}")
+                print(f"    -> {issue.suggestion}")
         
         return 0 if result.valid else 1
     else:
@@ -171,16 +171,16 @@ def cmd_smoke(args: argparse.Namespace) -> int:
     LOGGER.info(f"Running smoke test for {spec.name}...")
     report = smoke_check_model(ssh, spec)
     
-    status = "✓ PASSED" if report.passed else "✗ FAILED"
+    status = "[OK] PASSED" if report.ready else "[FAIL] FAILED"
     print(f"\n{status}: {spec.name}")
     print(f"Duration: {report.duration_sec:.1f}s")
     
-    if report.output:
-        print(f"Output: {report.output[:200]}")
+    if report.smoke_output:
+        print(f"Output: {report.smoke_output[:200]}")
     if report.error:
         print(f"Error: {report.error[:200]}")
     
-    return 0 if report.passed else 1
+    return 0 if report.ready else 1
 
 
 def cmd_build(args: argparse.Namespace) -> int:
@@ -212,7 +212,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     print(f"\nSteps:")
     
     for step in report.steps:
-        status = "✓" if step.success else "✗"
+        status = "[OK]" if step.success else "[FAIL]"
         print(f"  {status} {step.step} ({step.duration_sec:.1f}s)")
         if not step.success and step.error:
             print(f"    Error: {step.error[:100]}")
@@ -247,7 +247,7 @@ def cmd_health(args: argparse.Namespace) -> int:
     
     all_passed = True
     for r in results:
-        status = "✓" if r.success else "✗"
+        status = "[OK]" if r.success else "[FAIL]"
         print(f"  {status} {r.step}")
         if not r.success:
             all_passed = False

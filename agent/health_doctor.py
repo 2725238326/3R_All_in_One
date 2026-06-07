@@ -48,13 +48,13 @@ class DiagnosisReport:
         return any(i.fix_command for i in self.items)
     
     def summary(self) -> str:
-        status_emoji = {
-            "healthy": "✓",
-            "fixable": "⚠",
-            "needs_attention": "⚡",
-            "critical": "✗"
+        status_marker = {
+            "healthy": "[OK]",
+            "fixable": "[WARN]",
+            "needs_attention": "[INFO]",
+            "critical": "[FAIL]"
         }
-        return f"{status_emoji.get(self.overall_status, '?')} {self.model}: {self.overall_status} ({len(self.items)} issues)"
+        return f"{status_marker.get(self.overall_status, '[?]')} {self.model}: {self.overall_status} ({len(self.items)} issues)"
 
 
 # ─────────────── 错误模式库 ───────────────
@@ -156,7 +156,7 @@ class HealthDoctor:
             
             # 尝试匹配错误模式
             error_text = f"{result.output} {result.error}"
-            matched = self._match_patterns(error_text)
+            matched = self._match_patterns(error_text, env_name=spec.conda_env)
             
             if matched:
                 items.append(matched)
@@ -190,7 +190,7 @@ class HealthDoctor:
             items=items
         )
 
-    def _match_patterns(self, error_text: str) -> DiagnosisItem | None:
+    def _match_patterns(self, error_text: str, env_name: str = "") -> DiagnosisItem | None:
         """匹配错误模式"""
         for pattern in self.patterns:
             match = re.search(pattern["pattern"], error_text, re.IGNORECASE)
@@ -199,12 +199,16 @@ class HealthDoctor:
                 # 替换匹配组
                 if "{match}" in solution and match.groups():
                     solution = solution.replace("{match}", match.group(1))
+                if "{env_name}" in solution:
+                    solution = solution.replace("{env_name}", env_name or "<env_name>")
+                fix_command = self._extract_fix_command(solution)
                 
                 return DiagnosisItem(
                     symptom=pattern["symptom"],
                     cause=pattern["cause"],
                     solution=solution,
                     confidence=pattern["confidence"],
+                    fix_command=fix_command,
                 )
         return None
 
@@ -238,10 +242,17 @@ class HealthDoctor:
         for item in report.items:
             if item.fix_command:
                 fixes.append(item.fix_command)
-            elif item.solution.startswith("`") and item.solution.endswith("`"):
-                # 从 solution 中提取命令
-                fixes.append(item.solution.strip("`"))
+            else:
+                command = self._extract_fix_command(item.solution)
+                if command:
+                    fixes.append(command)
         return fixes
+
+    @staticmethod
+    def _extract_fix_command(solution: str) -> str:
+        """Extract the first shell command wrapped in backticks from a solution."""
+        match = re.search(r"`([^`]+)`", solution)
+        return match.group(1).strip() if match else ""
 
     def print_report(self, report: DiagnosisReport) -> None:
         """打印诊断报告"""
@@ -252,10 +263,10 @@ class HealthDoctor:
         print("-" * 70)
         
         if not report.items:
-            print("✓ No issues detected")
+            print("[OK] No issues detected")
         else:
             for i, item in enumerate(report.items, 1):
-                conf_bar = "●" * int(item.confidence * 5) + "○" * (5 - int(item.confidence * 5))
+                conf_bar = "#" * int(item.confidence * 5) + "." * (5 - int(item.confidence * 5))
                 print(f"\n[{i}] {item.symptom}")
                 print(f"    Cause: {item.cause}")
                 print(f"    Solution: {item.solution}")

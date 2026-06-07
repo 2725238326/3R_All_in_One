@@ -13,6 +13,7 @@ import time
 import uuid
 import zipfile
 from collections import Counter
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -92,7 +93,7 @@ from viser_manager import manager as viser_manager
 from storage_config import load_config, save_config, StorageConfig
 from storage_manager import get_storage_stats, evaluate_cleanup_rules, execute_cleanup, auto_clean_if_needed, start_auto_clean, stop_auto_clean, list_trash_items, restore_from_trash, empty_trash
 from logging_config import setup_logging, log, JobLogger
-from runtime_paths import backend_root, bundle_root, data_root
+from runtime_paths import backend_root, bundle_root, data_root, model_specs_dir
 from job_scheduler import JobPriority, scheduler
 from resource_monitor import monitor as resource_monitor
 from metrics_calculator import compute_job_metrics
@@ -106,6 +107,8 @@ _SAMPLES_CACHE: tuple[int | None, dict] | None = None
 _DEPLOYMENT_STATUS_CACHE_LOCK = threading.Condition(threading.RLock())
 _DEPLOYMENT_STATUS_CACHE: dict | None = None
 _DEPLOYMENT_STATUS_REFRESHING = False
+_AGENT_BUILD_TASKS: dict[str, dict] = {}
+_AGENT_BUILD_TASKS_LOCK = threading.Lock()
 DEPLOYMENT_STATUS_TTL_SECONDS = 20.0
 DEPLOYMENT_STATUS_STALE_SECONDS = 300.0
 DEPLOYMENT_STATUS_TIMEOUT_SECONDS = 15.0
@@ -114,12 +117,66 @@ development_store = DevelopmentStore()
 WS_ALL_JOBS_KEY = "__all__"
 
 
+async def _recover_orphan_running_jobs() -> None:
+    """Mark in-flight jobs from a previous process as failed on startup."""
+    try:
+        manager.bind_loop()
+        rehydrated = recover_orphan_running_jobs()
+    except Exception as exc:  # pragma: no cover - defensive
+        LOGGER.warning("Orphan job rehydration failed: %s", exc)
+        return
+    if rehydrated:
+        LOGGER.info(
+            "Rehydrated %d orphan running job(s) on startup: %s",
+            len(rehydrated),
+            ", ".join(rehydrated),
+        )
+
+
+async def startup_event() -> None:
+    setup_logging(level="INFO", console=True, file=True)
+    log.info("Backend starting up...")
+
+    await _recover_orphan_running_jobs()
+    resource_monitor.start()
+
+    def dispatch_fn(job_id: str):
+        _prepare_job_for_dispatch(job_id, "由调度器自动派发")
+
+    def status_fn(job_id: str) -> str:
+        try:
+            job = load_job(job_id)
+            return job.status
+        except FileNotFoundError:
+            return "unknown"
+
+    scheduler.configure(dispatch_fn, status_fn)
+    scheduler.start()
+    start_auto_clean()
+
+
+async def shutdown_event() -> None:
+    scheduler.stop()
+    resource_monitor.stop()
+    stop_auto_clean()
+
+
+@asynccontextmanager
+async def _app_lifespan(_: FastAPI):
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
 app = FastAPI(
     title="3R All-in-One API",
     description="MonST3R 应用程序后端 API - 支持 DUSt3R、MASt3R、MonST3R、Spann3R、Fast3R、Align3R、CUT3R 等三维重建模型",
-    version="0.4.1",
+    version="0.5.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=_app_lifespan,
     openapi_tags=[
         {
             "name": "系统状态",
@@ -251,23 +308,125 @@ def _normalize_batch_job_ids(job_ids: list[str]) -> list[str]:
     return normalized
 
 
-@app.on_event("startup")
-async def _recover_orphan_running_jobs() -> None:
-    """When the FastAPI process restarts, any prior in-flight job has lost its
-    runner thread. Mark them as failed so the UI does not show ghost-running
-    cards; the user can click retry to redispatch."""
-    try:
-        manager.bind_loop()
-        rehydrated = recover_orphan_running_jobs()
-    except Exception as exc:  # pragma: no cover - defensive
-        LOGGER.warning("Orphan job rehydration failed: %s", exc)
-        return
-    if rehydrated:
-        LOGGER.info(
-            "Rehydrated %d orphan running job(s) on startup: %s",
-            len(rehydrated),
-            ", ".join(rehydrated),
-        )
+def _ensure_agent_import_path() -> None:
+    """Allow backend/app.py to import the root-level agent package from backend cwd."""
+    import sys
+
+    root = str(bundle_root())
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+
+def _agent_modules():
+    _ensure_agent_import_path()
+    from agent.env_builder import EnvBuilder, SSHConfig
+    from agent.registry import ModelRegistry
+    from agent.schema_validator import SchemaValidator
+
+    return EnvBuilder, ModelRegistry, SchemaValidator, SSHConfig
+
+
+def _agent_registry():
+    _, ModelRegistry, _, _ = _agent_modules()
+    specs_dir = model_specs_dir()
+    registry = ModelRegistry(specs_dir=specs_dir)
+    if Path(registry.specs_dir).resolve() != specs_dir.resolve():
+        ModelRegistry._instance = None
+        registry = ModelRegistry(specs_dir=specs_dir)
+    return registry
+
+
+def _agent_issue_to_dict(issue) -> dict:
+    return {
+        "level": issue.level,
+        "field": issue.field,
+        "message": issue.message,
+        "suggestion": issue.suggestion,
+    }
+
+
+def _agent_validation_to_dict(result) -> dict:
+    return {
+        "model": result.model,
+        "path": result.path,
+        "valid": result.valid,
+        "errors": [_agent_issue_to_dict(issue) for issue in result.errors],
+        "warnings": [_agent_issue_to_dict(issue) for issue in result.warnings],
+        "issues": [_agent_issue_to_dict(issue) for issue in result.issues],
+        "errorCount": len(result.errors),
+        "warningCount": len(result.warnings),
+    }
+
+
+def _agent_spec_to_dict(spec) -> dict:
+    unresolved = spec.unresolved_issues
+    return {
+        **spec.summary(),
+        "family": spec.family,
+        "version": spec.version,
+        "paper": spec.paper,
+        "tags": spec.tags,
+        "repo": {
+            "url": spec.repo.get("url"),
+            "branch": spec.repo.get("branch"),
+            "server_path": spec.server_path,
+            "submodules": spec.repo.get("submodules", []),
+        },
+        "environment": {
+            "conda_env": spec.conda_env,
+            "python": spec.environment.get("python"),
+            "torch": spec.environment.get("torch"),
+            "cuda_toolkit": spec.environment.get("cuda_toolkit"),
+            "cuda_arch": spec.environment.get("cuda_arch"),
+            "create_strategy": spec.environment.get("create_strategy", "fresh"),
+            "clone_source": spec.environment.get("clone_source"),
+        },
+        "checkpoints": spec.checkpoints,
+        "resources": spec.resources,
+        "health_checks": spec.health_checks,
+        "smoke_test": spec.smoke_test,
+        "runner": spec.runner,
+        "output_contract": spec.output_contract,
+        "known_issues": spec.known_issues,
+        "unresolved_issue_items": unresolved,
+        "compatibility": spec.compatibility,
+        "priority": spec.priority,
+        "last_verified": spec.last_verified,
+        "param_tiers": {
+            tier: spec.get_param_tier(tier)
+            for tier in ("fast", "standard", "enhanced")
+        },
+    }
+
+
+def _agent_build_step_to_dict(step) -> dict:
+    return {
+        "model": step.model,
+        "step": step.step,
+        "success": step.success,
+        "output": step.output,
+        "error": step.error,
+        "duration_sec": round(float(step.duration_sec), 3),
+    }
+
+
+def _agent_environment_report_to_dict(report) -> dict:
+    return {
+        "model": report.model,
+        "success": report.success,
+        "smoke_passed": report.smoke_passed,
+        "total_duration_sec": round(float(report.total_duration_sec), 3),
+        "steps": [_agent_build_step_to_dict(step) for step in report.steps],
+    }
+
+
+def _agent_build_task_update(task_id: str, **updates: object) -> None:
+    with _AGENT_BUILD_TASKS_LOCK:
+        record = dict(_AGENT_BUILD_TASKS.get(task_id, {}))
+        record.update(updates)
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _AGENT_BUILD_TASKS[task_id] = record
+
 
 _BACKEND_ROOT = backend_root()
 _BUNDLE_ROOT = bundle_root()
@@ -1747,13 +1906,24 @@ async def health_api():
 @app.get("/api/runners/availability")
 async def runners_availability_api():
     """检查各执行器可用性"""
-    from runners.docker import LocalDockerRunner
-    from runners.online_api import OnlineAPIRunner
-    
+    try:
+        from runners import LocalDockerRunner, OnlineAPIRunner
+    except ImportError:
+        LocalDockerRunner = None
+        OnlineAPIRunner = None
+
+    docker_available = False
+    if LocalDockerRunner is not None:
+        docker_available = bool(LocalDockerRunner.is_available())
+
+    online_api_available = False
+    if OnlineAPIRunner is not None:
+        online_api_available = len(OnlineAPIRunner.available_providers()) > 0
+
     return JSONResponse({
         "ssh": True,  # SSH 始终可用（配置由用户提供）
-        "docker": LocalDockerRunner.is_available(),
-        "online_api": len(OnlineAPIRunner.available_providers()) > 0,
+        "docker": docker_available,
+        "online_api": online_api_available,
     })
 
 
@@ -1896,6 +2066,149 @@ async def app_state_api():
             "developmentLanes": development_lanes,
         }
     )
+
+
+@app.get("/api/agent/registry")
+async def agent_registry_api():
+    registry = _agent_registry()
+    summary = registry.summary()
+    models = [_agent_spec_to_dict(spec) for spec in registry.sorted_by_priority()]
+    return JSONResponse(
+        {
+            "summary": summary,
+            "models": models,
+            "specs_dir": str(model_specs_dir()),
+        }
+    )
+
+
+@app.get("/api/agent/registry/{model}")
+async def agent_model_detail_api(model: str):
+    registry = _agent_registry()
+    spec = registry.get(model)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"未知 Agent 模型蓝图：{model}")
+    return JSONResponse(_agent_spec_to_dict(spec))
+
+
+@app.get("/api/agent/validate")
+async def agent_validate_api(model: str | None = None):
+    _, _, SchemaValidator, _ = _agent_modules()
+    validator = SchemaValidator(specs_dir=model_specs_dir())
+    if model:
+        path = model_specs_dir() / f"{model.lower()}.yaml"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"未找到 Agent 蓝图：{model}")
+        results = [validator.validate_file(path)]
+    else:
+        results = validator.validate_all()
+
+    total_errors = sum(len(result.errors) for result in results)
+    total_warnings = sum(len(result.warnings) for result in results)
+    valid_count = sum(1 for result in results if result.valid)
+    return JSONResponse(
+        {
+            "ok": total_errors == 0,
+            "summary": {
+                "total": len(results),
+                "valid": valid_count,
+                "errors": total_errors,
+                "warnings": total_warnings,
+            },
+            "results": [_agent_validation_to_dict(result) for result in results],
+        }
+    )
+
+
+@app.get("/api/agent/builds")
+async def agent_builds_api():
+    with _AGENT_BUILD_TASKS_LOCK:
+        tasks = sorted(
+            (dict(task) for task in _AGENT_BUILD_TASKS.values()),
+            key=lambda task: str(task.get("created_at", "")),
+            reverse=True,
+        )
+    return JSONResponse({"tasks": tasks})
+
+
+@app.get("/api/agent/builds/{task_id}")
+async def agent_build_status_api(task_id: str):
+    with _AGENT_BUILD_TASKS_LOCK:
+        task = _AGENT_BUILD_TASKS.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"未找到 Agent 构建任务：{task_id}")
+        return JSONResponse(task)
+
+
+@app.post("/api/agent/build/{model}")
+async def agent_build_model_api(model: str, request: Request):
+    EnvBuilder, _, _, SSHConfig = _agent_modules()
+    registry = _agent_registry()
+    spec = registry.get(model)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"未知 Agent 模型蓝图：{model}")
+
+    raw_body = await request.body()
+    payload: dict = {}
+    if raw_body:
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Agent 构建 JSON 解析失败：{exc.msg}") from exc
+
+    alias = (payload.get("alias") or ServerConfig.alias or "").strip() or None
+    host = (payload.get("host") or ServerConfig.host or "").strip()
+    user = (payload.get("user") or ServerConfig.user or "").strip()
+    port = int(payload.get("port") or ServerConfig.port or 22)
+    key_file = payload.get("key_file") or payload.get("keyFile")
+    if not alias and (not host or not user):
+        raise HTTPException(status_code=400, detail="Agent 构建需要 SSH alias，或 host + user。")
+
+    ssh = SSHConfig(host=host or "127.0.0.1", user=user or "", port=port, key_file=key_file, alias=alias)
+    task_id = f"agent-build-{spec.key}-{uuid.uuid4().hex[:8]}"
+    now = datetime.now(timezone.utc).isoformat()
+    initial_record = {
+        "taskId": task_id,
+        "model": spec.key,
+        "modelName": spec.name,
+        "status": "queued",
+        "created_at": now,
+        "updated_at": now,
+        "ssh": {
+            "alias": alias,
+            "host": host,
+            "user": user,
+            "port": port,
+        },
+        "report": None,
+        "error": None,
+    }
+    with _AGENT_BUILD_TASKS_LOCK:
+        _AGENT_BUILD_TASKS[task_id] = initial_record
+
+    def _run_agent_build() -> None:
+        _agent_build_task_update(task_id, status="running", started_at=datetime.now(timezone.utc).isoformat())
+        try:
+            report = EnvBuilder(ssh=ssh).build(spec)
+            _agent_build_task_update(
+                task_id,
+                status="finished" if report.success else "failed",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                report=_agent_environment_report_to_dict(report),
+                error=None if report.success else "Agent environment build failed.",
+            )
+        except Exception as exc:
+            _agent_build_task_update(
+                task_id,
+                status="failed",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                report=None,
+                error=str(exc),
+            )
+
+    thread = threading.Thread(target=_run_agent_build, name=task_id, daemon=True)
+    thread.start()
+    return JSONResponse(_AGENT_BUILD_TASKS[task_id], status_code=202)
 
 
 @app.get("/api/models/catalog")
@@ -2937,35 +3250,3 @@ async def generate_compare_visuals_api(sample_id: str):
     
     results = generate_compare_visuals(job_dirs, labels, output_dir)
     return JSONResponse({"sample_id": sample_id, "visuals": results})
-
-
-@app.on_event("startup")
-async def startup_event():
-    # 初始化结构化日志
-    setup_logging(level="INFO", console=True, file=True)
-    log.info("Backend starting up...")
-
-    resource_monitor.start()
-
-    def dispatch_fn(job_id: str):
-        _prepare_job_for_dispatch(job_id, "由调度器自动派发")
-
-    def status_fn(job_id: str) -> str:
-        try:
-            job = load_job(job_id)
-            return job.status
-        except FileNotFoundError:
-            return "unknown"
-
-    scheduler.configure(dispatch_fn, status_fn)
-    scheduler.start()
-
-    # 启动自动清理后台线程
-    start_auto_clean()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    scheduler.stop()
-    resource_monitor.stop()
-    stop_auto_clean()

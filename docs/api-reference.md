@@ -61,6 +61,19 @@ POST   /api/compare/samples/{id}/visuals/generate  # Generate comparison visuals
 ```
 GET    /api/system/resources    # CPU/GPU/memory/disk stats
 GET    /api/deployment/status   # Remote model deployment status
+GET    /api/runners/availability # Optional runner availability
+```
+
+## Agent
+
+```
+GET    /api/agent/registry        # List Agent model blueprints
+GET    /api/agent/registry/{model} # Get one model blueprint
+GET    /api/agent/validate        # Validate all blueprints
+GET    /api/agent/validate?model={model} # Validate one blueprint
+GET    /api/agent/builds          # List environment build tasks
+GET    /api/agent/builds/{task_id} # Get build task status
+POST   /api/agent/build/{model}   # Start async environment build task
 ```
 
 ## AI Advisor
