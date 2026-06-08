@@ -262,9 +262,9 @@ Total: 7 | Integrated: 5 | Env Ready: 2 | With Issues: 3
 
 ### 5.4 P3 — 文档完善
 
-- [ ] 补充 `docs/agent-guide.md` 的 API 参考
-- [ ] 给 `README.md` 加 Agent CLI 快速上手段
-- [ ] 在 `CHANGELOG.md` 记录 v0.4.0 详细变更
+- [x] 补充 `docs/agent-guide.md` 的 API 参考
+- [x] 给 `README.md` 加 Agent CLI 快速上手段
+- [x] 在 `CHANGELOG.md` 记录 v0.5.0 详细变更
 
 ---
 

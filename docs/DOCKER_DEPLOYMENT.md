@@ -45,7 +45,8 @@ docker-compose down -v
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
 | `PYTHONUNBUFFERED` | `1` | Python 输出不缓冲 |
-| `DATA_ROOT` | `/app/data` | 数据根目录 |
+| `KYKT_DATA_ROOT` | `/app/data` | 后端运行时数据根目录 |
+| `DATA_ROOT` | `/app/data` | 兼容旧配置的数据根目录别名 |
 | `LOCAL_JOBS_DIR` | `/app/local_jobs` | 本地任务目录 |
 
 ### 数据持久化

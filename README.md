@@ -1,29 +1,29 @@
 # 3R All-in-One
 
-> 3D Reconstruction Model Management Platform — 一站式 3R 模型管理、对比与评估平台
+> 3D Reconstruction Model Management Platform — 面向前馈式 3R 模型的本地实验管理、远程运行与结果记录平台
 
 ## Overview
 
-3R All-in-One 是一个面向 3D 重建/空间智能研究的本地桌面工作台，支持多模型统一管理、远程 GPU 调度、自动化实验编排和 AI 辅助评估。
+3R All-in-One 是一个面向 3D 重建/空间智能研究的本地桌面工作台。当前结题版本重点完成了多模型注册、远程 GPU 任务派发、任务状态记录、结果索引、基础对比与开发辅助工具链。平台的定位是把不同前馈式 3R 模型的运行差异收敛到配置、runner 和任务记录中，便于复现、对比和阶段性展示。
 
 ### Supported Models
 
 | Model | Type | Status |
 |-------|------|--------|
-| DUSt3R | Static multi-view stereo | ✅ Integrated |
-| MASt3R | Static matching + reconstruction | ✅ Integrated |
-| MonST3R | Dynamic video reconstruction | ✅ Integrated |
-| Spann3R | Spatial memory reconstruction | ✅ Integrated |
-| Fast3R | Fast multi-image reconstruction | ✅ Integrated |
-| Align3R | Video depth alignment | 🔧 Env ready |
-| CUT3R | Online persistent reconstruction | 🔧 Env ready |
+| DUSt3R | Static multi-view stereo | Baseline / runner available |
+| MASt3R | Static matching + reconstruction | Smoke verified |
+| MonST3R | Dynamic video reconstruction | Standard sample verified |
+| Spann3R | Spatial memory reconstruction | Smoke verified |
+| Fast3R | Fast multi-image reconstruction | Smoke verified with attention fallback |
+| Align3R | Video depth alignment | Runner ready |
+| CUT3R | Online persistent reconstruction | Smoke verified |
 
 ### Key Features
 
 - **Command Center** — Job queue with search/filter, batch dispatch, real-time progress via WebSocket
 - **Comparison Charts** — Radar / bar charts + side-by-side visual preview for multi-model comparison
 - **Sample Matrix** — Cross-model comparison on shared test samples
-- **AI Advisor** — Automated result evaluation, parameter recommendation, failure diagnosis
+- **AI Advisor** — Result review, parameter notes, and failure diagnosis support
 - **Parameter Templates** — Save/load param configs for quick reuse across experiments
 - **Multi-Server Management** — Multiple SSH server profiles with one-click switching
 - **Upload Progress** — Real-time file upload progress bar with XHR streaming
@@ -31,7 +31,7 @@
 - **Resource Monitor** — GPU/CPU/memory/disk real-time monitoring
 - **Report Export** — HTML/PDF comparison reports with depth heatmaps and GIF animations
 - **Agent Workbench** — Model blueprint registry, validation, and environment build task orchestration
-- **Experiment Agent** — One-click environment setup and batch experiment orchestration
+- **Experiment Agent** — Environment validation, smoke checks, and batch experiment orchestration
 - **Desktop App** — Tauri 2 desktop shell with embedded backend
 
 ## Architecture
@@ -100,7 +100,7 @@
 │   ├── monst3r_runner.py
 │   ├── spann3r_runner.py
 │   └── fast3r_runner.py
-├── tests/                 # Backend/Agent tests (130 passing, 1 skipped)
+├── tests/                 # Backend/Agent tests
 │   └── backend/
 ├── agent/                 # One-click setup & experiment orchestration
 │   ├── model_specs/
@@ -139,6 +139,19 @@ npm install
 npm run dev
 ```
 
+### Agent CLI
+
+```bash
+python -m agent validate
+python -m agent status
+python -m agent health dust3r --alias KYKT-UI
+python -m agent smoke dust3r --alias KYKT-UI
+python -m agent build dust3r --alias KYKT-UI
+```
+
+The desktop `Agent 编排` workspace exposes the same blueprint registry,
+validation, and asynchronous environment build workflow through the backend API.
+
 ### Desktop Build
 
 ```bash
@@ -153,7 +166,8 @@ python tools/release_check.py
 ```
 
 The release gate checks version alignment, Agent blueprint validity, backend tests,
-frontend build output, and Docker Compose syntax when Docker is installed.
+frontend build output, Docker static configuration, and Docker Compose syntax
+when Docker is installed.
 
 For a Windows desktop release, also run:
 
@@ -162,6 +176,23 @@ For a Windows desktop release, also run:
 cd client
 npm run desktop:build
 ```
+
+After generating the desktop artifacts, run:
+
+```bash
+python tools/release_check.py --require-artifacts
+```
+
+## Closing-State Notes
+
+This repository is in a project-closing state rather than an open-ended product roadmap state. The most useful handoff material is:
+
+- [docs/architecture.md](docs/architecture.md) for the implemented module boundaries.
+- [docs/model-integration.md](docs/model-integration.md) for model blueprint and runner integration.
+- [docs/ROADMAP.md](docs/ROADMAP.md) for final status, known limits, and realistic continuation work.
+- [CHANGELOG.md](CHANGELOG.md) for completed milestones.
+
+Known limits are mostly engineering-surface limits: model environments still depend on remote server setup, output contracts are normalized but not identical across all models, and full quantitative comparison depends on the chosen dataset and available ground truth.
 
 ## Version History
 

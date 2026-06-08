@@ -41,11 +41,12 @@ All notable changes to this project will be documented in this file.
 - Zustand 渐进迁移 hooks（useUIState.ts）
 - Agent 后端 API：`/api/agent/registry`、`/api/agent/validate`、后台环境构建任务接口
 - AgentWorkbench 前端工作台：蓝图状态、校验摘要、模型详情、后台构建任务状态
-- 发布检查脚本 `tools/release_check.py`：版本对齐、Agent 校验、Python 测试、前端构建和 Docker Compose 配置检查
+- 发布检查脚本 `tools/release_check.py`：版本对齐、Agent 校验、Python 测试、前端构建、Docker 静态配置、Docker Compose 和正式产物检查
 - 发布依赖清单补齐 loguru/psutil 等运行依赖
 - 开发/打包依赖声明补齐 PyInstaller
 - Docker 生产镜像改为 Python 3.11，保留 backend/agent/runners/samples/tools 运行时布局
 - Docker health check 统一到 `/api/health`
+- Docker 运行时数据根设置为 `KYKT_DATA_ROOT=/app/data`，确保容器数据写入挂载目录
 - PyInstaller 后端侧车打包纳入 Agent 蓝图、根级 runner 脚本和 React 构建产物
 - Tauri NSIS 正式安装包路径验证：`3R All-in-One_0.5.0_x64-setup.exe`
 

@@ -72,7 +72,8 @@ python tools/release_check.py
 ```
 
 This verifies version alignment, Agent blueprint validation, Python tests,
-frontend build output, and Docker Compose configuration when Docker is installed.
+frontend build output, Docker static configuration, and Docker Compose
+configuration when Docker is installed.
 Use `--require-docker` on a machine that has Docker when Docker packaging is a
 release requirement.
 
@@ -82,6 +83,12 @@ For the Windows desktop release, rebuild the backend sidecar and installer:
 .\tools\build_backend.ps1
 cd client
 npm run desktop:build
+```
+
+After building those artifacts, include them in the release gate:
+
+```bash
+python tools/release_check.py --require-artifacts
 ```
 
 ## SSH Configuration
@@ -96,6 +103,6 @@ Host KYKT-UI
     StrictHostKeyChecking no
 ```
 
-## Portable Bundle
+## Closing Release Notes
 
-See `PORTABLE_BUNDLE.md` for creating a self-contained distribution with embedded Python.
+For the current closing deliverable, use the Windows sidecar build and Tauri installer flow above. A separate portable-bundle guide is not maintained in this repository.

@@ -162,9 +162,9 @@ python -m agent validate
 ```
 
 校验结果：
-- ✗ ERROR — 必须修复
-- ⚠ WARNING — 建议修复
-- ℹ INFO — 仅提示
+- `[ERROR]` — 必须修复
+- `[WARN]` — 建议修复
+- `[INFO]` — 仅提示
 
 ### 2. 构建环境
 
@@ -234,6 +234,36 @@ spec.summary()                    # 摘要 dict
 spec.get_param_tier("fast")       # {image_size: 224, num_frames: 24}
 spec.unresolved_issues            # 未解决问题列表
 ```
+
+---
+
+## Backend API
+
+Agent 工作台通过 FastAPI 暴露蓝图注册表、校验和环境构建任务：
+
+```http
+GET  /api/agent/registry
+GET  /api/agent/registry/{model}
+GET  /api/agent/validate
+GET  /api/agent/validate?model={model}
+GET  /api/agent/builds
+GET  /api/agent/builds/{task_id}
+POST /api/agent/build/{model}
+```
+
+`POST /api/agent/build/{model}` 会创建后台任务并立即返回 task id。请求体可覆盖 SSH 配置：
+
+```json
+{
+  "alias": "KYKT-UI",
+  "host": "172.17.140.97",
+  "user": "kykt26",
+  "port": 22,
+  "key_file": "C:/Users/you/.ssh/id_ed25519"
+}
+```
+
+构建任务状态可通过 `/api/agent/builds/{task_id}` 查询；前端 Agent 工作台会在任务运行时自动轮询。
 
 ---
 

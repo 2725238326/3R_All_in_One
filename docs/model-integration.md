@@ -37,6 +37,8 @@ output_contract:
 status: planned
 ```
 
+Use `agent/model_specs/SCHEMA.md` as the authoritative schema. The YAML file is the agent-side contract; the backend registry and runner script are the platform-side contract.
+
 ### 2. Write Runner Script
 
 Create `runners/newmodel_runner.py`. The runner must:
@@ -98,15 +100,17 @@ print(f"Ready: {report.ready}")
 
 ## Current Model Status
 
-| Model | Env | Checkpoints | Smoke | Runner | Platform E2E |
-|-------|-----|-------------|-------|--------|-------------|
-| DUSt3R | ✅ | ✅ | ✅ | ✅ | ✅ |
-| MASt3R | ✅ | ✅ | ✅ | ✅ | ✅ |
-| MonST3R | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Spann3R | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Fast3R | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Align3R | ✅ | ✅ | ✅ | ❌ | ❌ |
-| CUT3R | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Model | Backend status | Runner script | Closing note |
+|-------|----------------|---------------|--------------|
+| DUSt3R | `baseline` | `runners/dust3r_runner.py` | Baseline static reconstruction path |
+| MASt3R | `validated_smoke` | `runners/mast3r_runner.py` | Static matching/reconstruction path |
+| MonST3R | `validated_standard_sample` | `runners/monst3r_runner.py` | Main dynamic video sample path |
+| Spann3R | `validated_smoke` | `runners/spann3r_runner.py` | Spatial-memory reconstruction path |
+| Fast3R | `validated_smoke_attention_fallback` | `runners/fast3r_runner.py` | Large image collection path with attention fallback |
+| Align3R | `runner_ready` | `runners/align3r_runner.py` | Runner ready; full dataset validation remains follow-up work |
+| CUT3R | `validated_smoke` | `runners/cut3r_runner.py` | Streaming/persistent-state path smoke verified |
+
+`backend/model_registry.py` is the source of truth for platform-visible model status. The table above summarizes the current closing state and should be updated when `runner_status` changes.
 
 ## Server Layout
 
@@ -128,3 +132,15 @@ print(f"Ready: {report.ready}")
 │   └── <job_id>/
 └── runners/
 ```
+
+## Closing Scope
+
+For the closing delivery, a model is considered sufficiently integrated when:
+
+- it has an agent YAML blueprint,
+- it appears in `backend/model_registry.py`,
+- it has a runner script under `runners/`,
+- it can create or consume `job.json`, `status.json`, and `scene_meta.json`,
+- at least smoke-level validation or a documented blocker exists.
+
+Full paper-level benchmark reproduction is not part of the platform integration contract. It belongs to experiment design and depends on dataset, ground truth, and server environment stability.
