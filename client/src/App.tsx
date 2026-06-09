@@ -91,10 +91,11 @@ import { PointCloudViewer } from "./PointCloudViewer";
 import { StoragePanel } from "./StoragePanel";
 import { DashboardPanel } from "./DashboardPanel";
 import { AgentWorkbench } from "./AgentWorkbench";
+import { ExperimentWorkbench } from "./ExperimentWorkbench";
 
 export type ServiceState = "starting" | "ready" | "degraded";
 export type JobFilter = "all" | "running" | "attention" | "finished";
-export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "agent" | "system" | "storage" | "dashboard";
+export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "agent" | "experiments" | "system" | "storage" | "dashboard";
 export type CreateMode = "single" | "batch";
 
 type JobSocketEvent =
@@ -515,6 +516,7 @@ function App() {
       case "compare": return `对比面板：${compareSampleId || "--"}`;
       case "development": return "研发加速";
       case "agent": return "Agent 编排";
+      case "experiments": return "实验编排";
       case "system": return "系统配置";
     }
   }, [activeWorkspace, selectedJobId, createMode, compareSampleId]);
@@ -1029,6 +1031,10 @@ function App() {
 
           {activeWorkspace === "agent" && (
             <AgentWorkbench />
+          )}
+
+          {activeWorkspace === "experiments" && (
+            <ExperimentWorkbench />
           )}
 
           {activeWorkspace === "system" && (

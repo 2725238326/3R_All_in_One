@@ -198,6 +198,9 @@ export function JobDetail(props: {
         <a className="ghost-button" download href={props.assetUrl(`/api/jobs/${job.job_id}/bundle`)}>
           导出包
         </a>
+        <a className="ghost-button" download href={props.assetUrl(`/api/agent/experiment-record/${job.job_id}/download`)}>
+          实验记录包
+        </a>
       </div>
 
       {attentionJob ? (

@@ -11,15 +11,23 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from job_store import create_job, get_job_dir, list_all_jobs
+from job_store import (
+    create_job,
+    get_job_dir,
+    iter_input_items,
+    list_all_jobs,
+    load_job,
+    save_inputs,
+)
 from model_contracts import build_job_params, param_family_for
 from runtime_paths import data_root, local_jobs_dir
 
 ROOT = data_root()
 LOCAL_JOBS_DIR = local_jobs_dir()
 EXPERIMENT_MANIFEST_PATH = LOCAL_JOBS_DIR / "experiment_manifest.json"
+EXPERIMENT_RUNS_PATH = LOCAL_JOBS_DIR / "experiment_runs.json"
 _EXPERIMENT_LOCK = threading.RLock()
 
 
@@ -215,47 +223,147 @@ def generate_param_combinations(
     return result
 
 
+def _resolve_experiment_inputs(
+    *,
+    files: list[Path] | None = None,
+    source_job_id: str | None = None,
+) -> list[tuple[str, bytes]]:
+    """Resolve the input payload shared by every job in an experiment run.
+
+    Inputs come either from an existing job (reuse its uploaded files — the
+    common case: sweep params over the same scene) or from explicit
+    server-local file paths. Returns ``(original_name, bytes)`` tuples ready for
+    ``save_inputs``."""
+    uploaded: list[tuple[str, bytes]] = []
+    if source_job_id:
+        source = load_job(source_job_id)
+        for item in iter_input_items(source):
+            local_path = ROOT / item["relative_path"]
+            if local_path.exists():
+                uploaded.append((item["original_name"], local_path.read_bytes()))
+        return uploaded
+    for raw_path in files or []:
+        path = Path(raw_path)
+        if path.exists() and path.is_file():
+            uploaded.append((path.name, path.read_bytes()))
+    return uploaded
+
+
 def run_experiment_from_template(
     template_id: str,
     run_name: str,
-    files: list[Path],
+    *,
+    files: list[Path] | None = None,
+    source_job_id: str | None = None,
     notes: str = "",
+    auto_dispatch: bool = False,
+    dispatch: Callable[[str], None] | None = None,
 ) -> ExperimentRun:
-    """从实验模板运行实验"""
+    """Create one runnable job per parameter combination and optionally dispatch.
+
+    Replaces the previous broken implementation that called
+    ``create_job(files=...)`` (no such argument), treated the returned
+    ``JobRecord`` as a job id, never attached inputs, and never dispatched."""
     with _EXPERIMENT_LOCK:
         experiments = _load_experiments()
         if template_id not in experiments:
             raise ValueError(f"实验模板 {template_id} 不存在")
         template = experiments[template_id]
-    
-    # 生成参数组合
+
     param_combinations = generate_param_combinations(template.base_params, template.param_grid)
-    
-    # 创建任务
-    job_ids = []
-    for i, params in enumerate(param_combinations):
-        job_id = create_job(
+    uploaded = _resolve_experiment_inputs(files=files, source_job_id=source_job_id)
+
+    job_ids: list[str] = []
+    for index, raw_params in enumerate(param_combinations):
+        # Normalize/clamp each combination through the same contract the UI uses
+        # so experiment jobs carry valid, dispatch-ready params.
+        params = build_job_params(template.model, raw_params)
+        suffix = f" - {notes}" if notes else ""
+        job = create_job(
             model=template.model,
             source_type=template.source_type,
-            files=files,
+            notes=f"{run_name} - 组合 {index + 1}/{len(param_combinations)}{suffix}",
             params=params,
-            notes=f"{run_name} - 组合 {i+1}/{len(param_combinations)} - {notes}",
         )
-        job_ids.append(job_id)
-    
-    # 创建实验运行记录
+        if uploaded:
+            save_inputs(job, uploaded)
+        job_ids.append(job.job_id)
+
+    dispatched = 0
+    if auto_dispatch and dispatch is not None:
+        for job_id in job_ids:
+            try:
+                dispatch(job_id)
+                dispatched += 1
+            except Exception:  # noqa: BLE001 - one undispatchable job must not abort the run
+                pass
+
     run_id = f"run-{uuid.uuid4().hex[:8]}"
     now = _now_iso()
     run = ExperimentRun(
         id=run_id,
         template_id=template_id,
         name=run_name,
-        status="pending",
+        status="running" if dispatched else "pending",
         job_ids=job_ids,
         created_at=now,
+        started_at=now if dispatched else "",
+        metadata={
+            "model": template.model,
+            "combination_count": len(param_combinations),
+            "input_count": len(uploaded),
+            "dispatched": dispatched,
+            "source_job_id": source_job_id or "",
+        },
     )
-    
+    _persist_run(run)
     return run
+
+
+def _load_runs() -> dict[str, ExperimentRun]:
+    if not EXPERIMENT_RUNS_PATH.exists():
+        return {}
+    try:
+        data = json.loads(EXPERIMENT_RUNS_PATH.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    runs: dict[str, ExperimentRun] = {}
+    for key, value in data.items():
+        runs[key] = ExperimentRun(
+            id=value["id"],
+            template_id=value.get("templateId", ""),
+            name=value.get("name", ""),
+            status=value.get("status", "pending"),
+            job_ids=value.get("jobIds", []),
+            created_at=value.get("createdAt", ""),
+            started_at=value.get("startedAt", ""),
+            completed_at=value.get("completedAt", ""),
+            metadata=value.get("metadata", {}),
+        )
+    return runs
+
+
+def _save_runs(runs: dict[str, ExperimentRun]) -> None:
+    EXPERIMENT_RUNS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {key: run.to_dict() for key, run in runs.items()}
+    EXPERIMENT_RUNS_PATH.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _persist_run(run: ExperimentRun) -> None:
+    with _EXPERIMENT_LOCK:
+        runs = _load_runs()
+        runs[run.id] = run
+        _save_runs(runs)
+
+
+def list_experiment_runs() -> list[ExperimentRun]:
+    with _EXPERIMENT_LOCK:
+        return sorted(_load_runs().values(), key=lambda run: run.created_at, reverse=True)
+
+
+def get_experiment_run(run_id: str) -> ExperimentRun | None:
+    with _EXPERIMENT_LOCK:
+        return _load_runs().get(run_id)
 
 
 def get_experiment_run_summary(job_ids: list[str]) -> dict[str, Any]:

@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from job_store import ROOT, get_job_dir, iter_input_items, load_job, update_job, write_result_summary
-from model_contracts import runner_spec_for
+from model_contracts import check_output_contract, runner_spec_for
 from runtime_paths import runners_dir
 
 
@@ -841,6 +841,7 @@ def _generate_result_summary(job_id: str, output_files: list[str]) -> None:
         "artifacts": [{"name": Path(rel_path).name, "relative_path": rel_path} for rel_path in output_files],
         "params": job.params,
         "scene_meta": scene_meta,
+        "contract_check": check_output_contract(job.model, output_files, scene_meta),
         "artifact_groups": artifact_groups,
         "primary_artifacts": primary_artifacts,
         "highlights": highlights,

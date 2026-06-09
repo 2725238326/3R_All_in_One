@@ -42,12 +42,16 @@ from experiment_orchestrator import (
     create_experiment_template,
     delete_experiment_template,
     generate_param_combinations,
+    get_experiment_run,
     get_experiment_template,
     get_experiment_run_summary,
+    list_experiment_runs,
     list_experiment_templates,
     run_experiment_from_template,
     update_experiment_template,
 )
+from experiment_record import build_experiment_record, build_experiment_record_bundle
+from scene_meta import normalize_scene_meta
 from development_store import DevelopmentItem, DevelopmentStore, DevelopmentStoreError, item_priority_score
 from job_store import (
     EVALUATION_SCORE_FIELDS,
@@ -77,6 +81,7 @@ from model_contracts import (
     artifact_index_for,
     artifact_record_for,
     build_job_params as build_contract_job_params,
+    check_output_contract,
     minimum_input_count,
     model_contract_for,
     validate_create_request,
@@ -109,6 +114,12 @@ _DEPLOYMENT_STATUS_CACHE: dict | None = None
 _DEPLOYMENT_STATUS_REFRESHING = False
 _AGENT_BUILD_TASKS: dict[str, dict] = {}
 _AGENT_BUILD_TASKS_LOCK = threading.Lock()
+# Async smoke / health / doctor / batch-smoke tasks. Same lifecycle shape as the
+# build tasks above (queued -> running -> finished/failed) so the frontend can
+# poll a single status endpoint regardless of which agent check was launched.
+_AGENT_CHECK_TASKS: dict[str, dict] = {}
+_AGENT_CHECK_TASKS_LOCK = threading.Lock()
+_AGENT_CHECK_TASKS_MAX = 200
 DEPLOYMENT_STATUS_TTL_SECONDS = 20.0
 DEPLOYMENT_STATUS_STALE_SECONDS = 300.0
 DEPLOYMENT_STATUS_TIMEOUT_SECONDS = 15.0
@@ -426,6 +437,154 @@ def _agent_build_task_update(task_id: str, **updates: object) -> None:
         record.update(updates)
         record["updated_at"] = datetime.now(timezone.utc).isoformat()
         _AGENT_BUILD_TASKS[task_id] = record
+
+
+def _agent_check_modules() -> dict:
+    """Lazily import the agent smoke/health/doctor helpers (root-level package)."""
+    _ensure_agent_import_path()
+    from agent.env_builder import run_health_checks
+    from agent.health_doctor import HealthDoctor
+    from agent.smoke_runner import smoke_check_all, smoke_check_model, smoke_check_summary
+
+    return {
+        "smoke_check_model": smoke_check_model,
+        "smoke_check_all": smoke_check_all,
+        "smoke_check_summary": smoke_check_summary,
+        "run_health_checks": run_health_checks,
+        "HealthDoctor": HealthDoctor,
+    }
+
+
+def _require_agent_spec(model: str):
+    """Return the agent blueprint for ``model`` or raise 404."""
+    registry = _agent_registry()
+    spec = registry.get(model)
+    if spec is None:
+        raise HTTPException(status_code=404, detail=f"未知 Agent 模型蓝图：{model}")
+    return spec
+
+
+def _agent_ssh_public(ssh) -> dict:
+    return {
+        "alias": getattr(ssh, "alias", None),
+        "host": getattr(ssh, "host", None),
+        "user": getattr(ssh, "user", None),
+        "port": getattr(ssh, "port", None),
+    }
+
+
+def _agent_ssh_config_from_payload(payload: dict):
+    """Build an agent ``SSHConfig`` from a request payload, defaulting to the
+    active backend ``ServerConfig``. Shared by build/smoke/health endpoints."""
+    _, _, _, SSHConfig = _agent_modules()
+    payload = payload or {}
+    alias = (payload.get("alias") or ServerConfig.alias or "").strip() or None
+    host = (payload.get("host") or ServerConfig.host or "").strip()
+    user = (payload.get("user") or ServerConfig.user or "").strip()
+    port = int(payload.get("port") or ServerConfig.port or 22)
+    key_file = payload.get("key_file") or payload.get("keyFile")
+    if not alias and (not host or not user):
+        raise HTTPException(status_code=400, detail="Agent 操作需要 SSH alias，或 host + user。")
+    return SSHConfig(host=host or "127.0.0.1", user=user or "", port=port, key_file=key_file, alias=alias)
+
+
+async def _read_optional_json_body(request: Request) -> dict:
+    """Parse an optional JSON request body; empty body -> empty dict."""
+    raw_body = await request.body()
+    if not raw_body:
+        return {}
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"JSON 解析失败：{exc.msg}") from exc
+    return payload if isinstance(payload, dict) else {}
+
+
+def _agent_diagnosis_item_to_dict(item) -> dict:
+    return {
+        "symptom": item.symptom,
+        "cause": item.cause,
+        "solution": item.solution,
+        "confidence": round(float(item.confidence), 3),
+        "related_issue_id": item.related_issue_id,
+        "fix_command": item.fix_command,
+    }
+
+
+def _agent_diagnosis_to_dict(report) -> dict:
+    return {
+        "model": report.model,
+        "overall_status": report.overall_status,
+        "has_fixes": report.has_fixes,
+        "items": [_agent_diagnosis_item_to_dict(item) for item in report.items],
+    }
+
+
+def _agent_check_task_update(task_id: str, **updates: object) -> None:
+    with _AGENT_CHECK_TASKS_LOCK:
+        record = dict(_AGENT_CHECK_TASKS.get(task_id, {}))
+        record.update(updates)
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _AGENT_CHECK_TASKS[task_id] = record
+
+
+def _prune_agent_check_tasks_locked() -> None:
+    """Bound the in-memory check-task store so long sessions don't leak."""
+    if len(_AGENT_CHECK_TASKS) <= _AGENT_CHECK_TASKS_MAX:
+        return
+    ordered = sorted(_AGENT_CHECK_TASKS.values(), key=lambda task: str(task.get("created_at", "")))
+    for task in ordered[: len(_AGENT_CHECK_TASKS) - _AGENT_CHECK_TASKS_MAX]:
+        if task.get("status") in ("finished", "failed"):
+            _AGENT_CHECK_TASKS.pop(task.get("taskId", ""), None)
+
+
+def _start_agent_check_task(kind: str, label: str, ssh, work_fn) -> dict:
+    """Run ``work_fn`` on a daemon thread and track it as an agent check task.
+
+    ``work_fn`` must return a JSON-serializable result; exceptions are recorded
+    as a failed task. Returns the initial queued task record."""
+    task_id = f"agent-{kind}-{label}-{uuid.uuid4().hex[:8]}"
+    now = datetime.now(timezone.utc).isoformat()
+    initial_record = {
+        "taskId": task_id,
+        "kind": kind,
+        "label": label,
+        "status": "queued",
+        "created_at": now,
+        "updated_at": now,
+        "started_at": None,
+        "finished_at": None,
+        "ssh": _agent_ssh_public(ssh),
+        "result": None,
+        "error": None,
+    }
+    with _AGENT_CHECK_TASKS_LOCK:
+        _AGENT_CHECK_TASKS[task_id] = initial_record
+        _prune_agent_check_tasks_locked()
+
+    def _run() -> None:
+        _agent_check_task_update(task_id, status="running", started_at=datetime.now(timezone.utc).isoformat())
+        try:
+            result = work_fn()
+            _agent_check_task_update(
+                task_id,
+                status="finished",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                result=result,
+                error=None,
+            )
+        except Exception as exc:  # noqa: BLE001 - surfaced to the UI as task.error
+            _agent_check_task_update(
+                task_id,
+                status="failed",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                result=None,
+                error=str(exc),
+            )
+
+    threading.Thread(target=_run, name=task_id, daemon=True).start()
+    with _AGENT_CHECK_TASKS_LOCK:
+        return dict(_AGENT_CHECK_TASKS[task_id])
 
 
 _BACKEND_ROOT = backend_root()
@@ -2142,29 +2301,14 @@ async def agent_build_status_api(task_id: str):
 
 @app.post("/api/agent/build/{model}")
 async def agent_build_model_api(model: str, request: Request):
-    EnvBuilder, _, _, SSHConfig = _agent_modules()
-    registry = _agent_registry()
-    spec = registry.get(model)
-    if spec is None:
-        raise HTTPException(status_code=404, detail=f"未知 Agent 模型蓝图：{model}")
-
-    raw_body = await request.body()
-    payload: dict = {}
-    if raw_body:
-        try:
-            payload = json.loads(raw_body.decode("utf-8"))
-        except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=400, detail=f"Agent 构建 JSON 解析失败：{exc.msg}") from exc
-
-    alias = (payload.get("alias") or ServerConfig.alias or "").strip() or None
-    host = (payload.get("host") or ServerConfig.host or "").strip()
-    user = (payload.get("user") or ServerConfig.user or "").strip()
-    port = int(payload.get("port") or ServerConfig.port or 22)
-    key_file = payload.get("key_file") or payload.get("keyFile")
-    if not alias and (not host or not user):
-        raise HTTPException(status_code=400, detail="Agent 构建需要 SSH alias，或 host + user。")
-
-    ssh = SSHConfig(host=host or "127.0.0.1", user=user or "", port=port, key_file=key_file, alias=alias)
+    EnvBuilder, _, _, _ = _agent_modules()
+    spec = _require_agent_spec(model)
+    payload = await _read_optional_json_body(request)
+    ssh = _agent_ssh_config_from_payload(payload)
+    alias = ssh.alias
+    host = ssh.host
+    user = ssh.user
+    port = ssh.port
     task_id = f"agent-build-{spec.key}-{uuid.uuid4().hex[:8]}"
     now = datetime.now(timezone.utc).isoformat()
     initial_record = {
@@ -2209,6 +2353,165 @@ async def agent_build_model_api(model: str, request: Request):
     thread = threading.Thread(target=_run_agent_build, name=task_id, daemon=True)
     thread.start()
     return JSONResponse(_AGENT_BUILD_TASKS[task_id], status_code=202)
+
+
+@app.post("/api/agent/smoke/{model}")
+async def agent_smoke_model_api(model: str, request: Request):
+    """Launch a background smoke check (env + checkpoints + smoke_test) for one model."""
+    spec = _require_agent_spec(model)
+    ssh = _agent_ssh_config_from_payload(await _read_optional_json_body(request))
+    smoke_check_model = _agent_check_modules()["smoke_check_model"]
+
+    def _work() -> dict:
+        return smoke_check_model(ssh, spec).to_dict()
+
+    return JSONResponse(_start_agent_check_task("smoke", spec.key, ssh, _work), status_code=202)
+
+
+@app.post("/api/agent/health/{model}")
+async def agent_health_model_api(model: str, request: Request):
+    """Launch background health checks for one model and attach an AI diagnosis."""
+    spec = _require_agent_spec(model)
+    ssh = _agent_ssh_config_from_payload(await _read_optional_json_body(request))
+    mods = _agent_check_modules()
+    run_health_checks = mods["run_health_checks"]
+    HealthDoctor = mods["HealthDoctor"]
+
+    def _work() -> dict:
+        results = run_health_checks(ssh, spec)
+        diagnosis = HealthDoctor().diagnose(spec, results)
+        return {
+            "checks": [_agent_build_step_to_dict(result) for result in results],
+            "all_passed": all(result.success for result in results) if results else True,
+            "diagnosis": _agent_diagnosis_to_dict(diagnosis),
+        }
+
+    return JSONResponse(_start_agent_check_task("health", spec.key, ssh, _work), status_code=202)
+
+
+@app.post("/api/agent/smoke-batch")
+async def agent_smoke_batch_api(request: Request):
+    """Launch one background task that smoke-checks several (or all) models."""
+    payload = await _read_optional_json_body(request)
+    ssh = _agent_ssh_config_from_payload(payload)
+    registry = _agent_registry()
+
+    requested = payload.get("models")
+    if isinstance(requested, str):
+        requested = [item.strip() for item in requested.split(",") if item.strip()]
+    models: list[str] | None = None
+    label = "all"
+    if requested:
+        unknown = [name for name in requested if registry.get(name) is None]
+        if unknown:
+            raise HTTPException(status_code=404, detail=f"未知 Agent 模型蓝图：{', '.join(unknown)}")
+        # spec.name.lower() == key for every registered blueprint, so the key
+        # list is an accepted filter for smoke_check_all.
+        models = list(requested)
+        label = "selected"
+
+    mods = _agent_check_modules()
+    smoke_check_all = mods["smoke_check_all"]
+    smoke_check_summary = mods["smoke_check_summary"]
+    specs_dir = model_specs_dir()
+
+    def _work() -> dict:
+        reports = smoke_check_all(ssh, specs_dir, filter_models=models)
+        return smoke_check_summary(reports)
+
+    return JSONResponse(_start_agent_check_task("smoke-batch", label, ssh, _work), status_code=202)
+
+
+@app.get("/api/agent/checks")
+async def agent_checks_api():
+    with _AGENT_CHECK_TASKS_LOCK:
+        tasks = sorted(
+            (dict(task) for task in _AGENT_CHECK_TASKS.values()),
+            key=lambda task: str(task.get("created_at", "")),
+            reverse=True,
+        )
+    return JSONResponse({"tasks": tasks})
+
+
+@app.get("/api/agent/checks/{task_id}")
+async def agent_check_status_api(task_id: str):
+    with _AGENT_CHECK_TASKS_LOCK:
+        task = _AGENT_CHECK_TASKS.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"未找到 Agent 检查任务：{task_id}")
+        return JSONResponse(dict(task))
+
+
+def _load_job_scene_meta(job_id: str) -> dict | None:
+    path = get_job_dir(job_id) / "output" / "scene_meta.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _blueprint_for_record(model: str) -> dict | None:
+    """Pull the reproduce-relevant fields from a model's agent blueprint."""
+    try:
+        spec = _agent_registry().get(model)
+    except Exception:  # noqa: BLE001 - blueprint is best-effort metadata
+        return None
+    if spec is None:
+        return None
+    return {
+        "version": spec.version,
+        "environment": spec.environment,
+        "repo": spec.repo,
+        "runner": spec.runner,
+        "checkpoints": spec.checkpoints,
+        "build_steps": spec.build_steps,
+        "smoke_test": spec.smoke_test,
+    }
+
+
+def _experiment_record_for(job) -> dict:
+    contract = None
+    try:
+        contract = model_contract_for(job.model)
+    except KeyError:
+        contract = None
+    return build_experiment_record(
+        job=job.to_dict(),
+        result_summary=load_result_summary(job.job_id),
+        scene_meta=_load_job_scene_meta(job.job_id),
+        blueprint=_blueprint_for_record(job.model),
+        contract=contract,
+        server={"alias": ServerConfig.alias, "host": ServerConfig.host, "user": ServerConfig.user},
+    )
+
+
+@app.get("/api/agent/experiment-record/{job_id}")
+async def agent_experiment_record_api(job_id: str):
+    """Return the reproducible experiment-record manifest for a job (preview)."""
+    try:
+        job = load_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}。") from exc
+    return JSONResponse(_experiment_record_for(job))
+
+
+@app.get("/api/agent/experiment-record/{job_id}/download")
+async def agent_experiment_record_download_api(job_id: str):
+    """Build and download a reproducible experiment-record zip for a job."""
+    try:
+        job = load_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}。") from exc
+    record = _experiment_record_for(job)
+    bundle_path = build_experiment_record_bundle(
+        job_id=job_id,
+        job_dir=get_job_dir(job_id),
+        record=record,
+        out_dir=ROOT / "local_jobs" / "_bundles",
+    )
+    return FileResponse(path=str(bundle_path), filename=bundle_path.name, media_type="application/zip")
 
 
 @app.get("/api/models/catalog")
@@ -2265,6 +2568,39 @@ async def job_inspection_api(job_id: str):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}。") from exc
     return JSONResponse(build_job_inspection_packet(job))
+
+
+@app.get("/api/jobs/{job_id}/scene-meta")
+async def job_scene_meta_api(job_id: str):
+    """Return a normalized, runner-agnostic view of the job's scene_meta.json."""
+    try:
+        job = load_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}。") from exc
+    raw = _load_job_scene_meta(job_id)
+    return JSONResponse(
+        {
+            "jobId": job_id,
+            "model": job.model,
+            "sceneMeta": normalize_scene_meta(job.model, raw, output_files=job.output_files),
+        }
+    )
+
+
+@app.get("/api/jobs/{job_id}/contract-check")
+async def job_contract_check_api(job_id: str):
+    """Validate the job's downloaded outputs against the model result contract."""
+    try:
+        job = load_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"未找到任务 {job_id}。") from exc
+    raw = _load_job_scene_meta(job_id)
+    return JSONResponse(
+        {
+            "jobId": job_id,
+            "contractCheck": check_output_contract(job.model, job.output_files, raw),
+        }
+    )
 
 
 @app.get("/api/development/lanes")
@@ -2828,18 +3164,46 @@ async def delete_experiment_template_api(template_id: str):
 
 @app.post("/api/experiments/templates/{template_id}/run", tags=["实验编排"])
 async def run_experiment_api(template_id: str, request: Request):
-    """从实验模板运行实验"""
+    """从实验模板运行实验：按参数网格创建可派发任务，可选自动派发。"""
     payload = await request.json()
+    source_job_id = payload.get("source_job_id") or payload.get("sourceJobId") or None
+    auto_dispatch = bool(payload.get("auto_dispatch") or payload.get("autoDispatch"))
+    files = [Path(item) for item in payload.get("files", []) if str(item).strip()]
+    dispatch = None
+    if auto_dispatch:
+        def dispatch(job_id: str) -> None:  # noqa: E306 - local dispatcher reused per job
+            _dispatch_job_for_api(job_id, "实验编排任务已派发，正在启动远端调度线程...")
     try:
         run = run_experiment_from_template(
             template_id=template_id,
-            run_name=payload.get("run_name", ""),
-            files=[Path(f) for f in payload.get("files", [])],
+            run_name=payload.get("run_name") or payload.get("runName") or "",
+            files=files,
+            source_job_id=source_job_id,
             notes=payload.get("notes", ""),
+            auto_dispatch=auto_dispatch,
+            dispatch=dispatch,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return JSONResponse(run.to_dict())
+
+
+@app.get("/api/experiments/runs", tags=["实验编排"])
+async def list_experiment_runs_api():
+    """列出已记录的实验运行。"""
+    return JSONResponse({"runs": [run.to_dict() for run in list_experiment_runs()]})
+
+
+@app.get("/api/experiments/runs/{run_id}", tags=["实验编排"])
+async def get_experiment_run_api(run_id: str):
+    """获取单个实验运行记录及其任务摘要。"""
+    run = get_experiment_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"实验运行 {run_id} 不存在")
+    summary = get_experiment_run_summary(run.job_ids)
+    return JSONResponse({**run.to_dict(), "summary": summary})
 
 
 @app.post("/api/experiments/summary", tags=["实验编排"])

@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+**Agent 工作台**
+- Agent 检查 API：`POST /api/agent/smoke/{model}`、`POST /api/agent/health/{model}`（健康检查 + HealthDoctor 诊断）、`POST /api/agent/smoke-batch`、`GET /api/agent/checks[/{task_id}]`。复用已有环境构建任务的异步模式（后台线程 + 轮询），把原本仅 CLI 可用的 smoke/health/doctor 暴露为接口。
+- 实验记录包：`GET /api/agent/experiment-record/{job_id}`（可复现 manifest 预览）与 `/download`（zip）。manifest 串联模型蓝图（env/commit/checkpoints/build_steps/smoke）、参数、服务器、runner、scene_meta 与结果摘要；任务详情页新增「实验记录包」下载入口。
+- AgentWorkbench 前端：蓝图校验逐条明细（field/level/message/建议）、逐模型 smoke/health/build 触发与状态回显、HealthDoctor 诊断摘要面板、一键批量 smoke。
+
+**任务闭环**
+- scene_meta.json 读时归一化（`backend/scene_meta.py`）：统一 dust3r/monst3r/align3r 等不一致的历史字段（补 `model`、统一 `artifacts`/`point_count` 等），`GET /api/jobs/{job_id}/scene-meta` 提供与 runner 无关的稳定视图。
+- runner 输出合同校验（`model_contracts.check_output_contract`）：任务完成时把产物与 `RESULT_CONTRACTS` 必需文件、scene_meta 存在性比对，结果写入 `result_summary` 的 `contract_check`；`GET /api/jobs/{job_id}/contract-check` 可按需复核。
+- 实验运行记录持久化（`experiment_runs.json`）+ `GET /api/experiments/runs[/{run_id}]`。
+
+### Fixed
+- 批量实验编排「运行」链断裂：`run_experiment_from_template` 调用了不存在的 `create_job(files=...)` 导致 `TypeError`，且从不保存输入、把 `JobRecord` 误当 job_id、从不派发。现改为按参数网格创建可派发任务、用 `save_inputs` 复用来源任务（`source_job_id`）或文件输入、返回真实 job_id，并支持可选 `auto_dispatch`。
+
+### Notes
+- smoke/health 仍依赖远端 GPU 服务器；后端单测以 mock SSH 验证 API 层与编排逻辑。模型可运行状态仍以 `backend/model_registry.py` 的 `runner_status` 为准。
+- `tools/release_check.py` 新增 `check_api_surface` 静态门禁，校验上述端点已注册。
+
 ## [v0.5.0] - 2026-05-27
 
 ### Added

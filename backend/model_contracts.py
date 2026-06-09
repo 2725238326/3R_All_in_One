@@ -585,3 +585,42 @@ def _role_order(primary_roles: list[str], role: str) -> int:
         return primary_roles.index(role)
     except ValueError:
         return len(primary_roles) + 1
+
+
+def check_output_contract(
+    model: str,
+    output_files: list[str],
+    scene_meta: dict | None = None,
+) -> dict:
+    """Validate a finished job's downloaded outputs against the model's result
+    contract.
+
+    ``output_files`` are relative-to-data-root paths (as stored on the job
+    record); required files are matched by path suffix so the check works
+    regardless of the job-id prefix. Returns a structured report; ``ok`` is True
+    only when every required file is present."""
+    contract = result_contract_for(model)
+    required = list(contract.get("requiredFiles") or ())
+    optional = list(contract.get("optionalFiles") or ())
+    present = [str(path).replace("\\", "/") for path in (output_files or [])]
+
+    def _has(target: str) -> bool:
+        normalized = target.replace("\\", "/")
+        return any(path == normalized or path.endswith("/" + normalized) for path in present)
+
+    satisfied = [req for req in required if _has(req)]
+    missing = [req for req in required if not _has(req)]
+    optional_present = [opt for opt in optional if _has(opt)]
+    scene_meta_present = _has("output/scene_meta.json") or bool(scene_meta)
+
+    return {
+        "model": model,
+        "ok": not missing,
+        "download_mode": contract.get("downloadMode"),
+        "required_files": required,
+        "satisfied_files": satisfied,
+        "missing_files": missing,
+        "optional_present": optional_present,
+        "scene_meta_present": scene_meta_present,
+        "output_file_count": len(present),
+    }

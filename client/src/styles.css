@@ -1773,6 +1773,164 @@ body {
   }
 }
 
+.agent-head-actions,
+.agent-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agent-batch-panel,
+.agent-validation-block,
+.agent-check-result {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-batch-body {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-subhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.agent-issue-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--line-default);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: #f7f9fc;
+}
+
+.agent-issue-row.error {
+  border-color: rgba(194, 84, 102, 0.28);
+  background: #fff5f7;
+}
+
+.agent-issue-row.warning {
+  border-color: rgba(214, 158, 46, 0.28);
+  background: #fffdf3;
+}
+
+.agent-issue-level {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  padding-top: 2px;
+}
+
+.agent-issue-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.agent-issue-body strong {
+  font-size: 12px;
+}
+
+.agent-issue-body span {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.agent-issue-body small {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.agent-diagnosis-row {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-default);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f7f9fc;
+}
+
+.agent-diagnosis-row strong {
+  font-size: 12px;
+}
+
+.agent-diagnosis-row span,
+.agent-diagnosis-row small {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.agent-diagnosis-row code {
+  font-size: 11px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  overflow-x: auto;
+}
+
+.agent-diagnosis-row em {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-style: normal;
+}
+
+.exp-form {
+  display: grid;
+  gap: 10px;
+}
+
+.exp-field {
+  display: grid;
+  gap: 4px;
+}
+
+.exp-field > span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.exp-field input,
+.exp-field select,
+.exp-field textarea {
+  border: 1px solid var(--line-default);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 12px;
+  background: #fff;
+  color: var(--text-primary);
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.exp-field textarea {
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.exp-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.exp-checkbox input {
+  width: auto;
+}
+
 .sample-row-progress-head {
   display: flex;
   align-items: center;

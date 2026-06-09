@@ -94,6 +94,33 @@ def check_packaged_resources() -> GateResult:
     return GateResult("packaged resources", "PASS", "agent, runners, and client dist included")
 
 
+def check_api_surface() -> GateResult:
+    """Static check that the agent-workbench and task closed-loop endpoints are
+    still registered in backend/app.py. Dependency-light: it greps the source
+    rather than importing the app, matching the style of the other static gates.
+    The pytest gate exercises these endpoints behaviorally."""
+    app_source = _read("backend/app.py")
+    required_routes = [
+        '"/api/agent/smoke/{model}"',
+        '"/api/agent/health/{model}"',
+        '"/api/agent/smoke-batch"',
+        '"/api/agent/checks"',
+        '"/api/agent/checks/{task_id}"',
+        '"/api/agent/experiment-record/{job_id}"',
+        '"/api/jobs/{job_id}/scene-meta"',
+        '"/api/jobs/{job_id}/contract-check"',
+        '"/api/experiments/runs"',
+    ]
+    missing = [route for route in required_routes if route not in app_source]
+    if missing:
+        return GateResult("api surface", "FAIL", "missing routes: " + ", ".join(missing))
+    return GateResult(
+        "api surface",
+        "PASS",
+        f"{len(required_routes)} agent/closed-loop routes registered",
+    )
+
+
 def check_docker_static() -> GateResult:
     dockerfile = _read("Dockerfile")
     compose = _read("docker-compose.yml")
@@ -197,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     results = [
         check_versions(),
         check_packaged_resources(),
+        check_api_surface(),
         check_docker_static(),
         _run("agent blueprint validation", [sys.executable, "-m", "agent", "validate"]),
     ]
