@@ -1885,6 +1885,99 @@ body {
   font-style: normal;
 }
 
+.result-evidence-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.evidence-kpi-grid,
+.evidence-stat-strip {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.evidence-stat-strip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.evidence-two-col {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.evidence-block,
+.evidence-warning-list {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line-default);
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.contract-file-list,
+.scene-meta-list {
+  display: grid;
+  gap: 6px;
+}
+
+.contract-file-row,
+.scene-meta-list > div {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  grid-template-columns: 48px minmax(0, 1fr);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 9px;
+  padding: 7px 9px;
+  background: #fff;
+}
+
+.scene-meta-list > div {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.contract-file-row span,
+.scene-meta-list span {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+.contract-file-row strong,
+.scene-meta-list strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contract-file-row.ok span {
+  color: #15803d;
+}
+
+.contract-file-row.missing {
+  border-color: rgba(194, 84, 102, 0.32);
+  background: #fff5f7;
+}
+
+.contract-file-row.missing span {
+  color: #be123c;
+}
+
+@media (max-width: 1120px) {
+  .evidence-kpi-grid,
+  .evidence-stat-strip,
+  .evidence-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
 .exp-form {
   display: grid;
   gap: 10px;

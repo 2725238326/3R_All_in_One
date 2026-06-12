@@ -1,5 +1,5 @@
 import type React from "react";
-import { WorkspaceTab } from "./App";
+import type { WorkspaceTab } from "./workspaceTypes";
 import {
   ListTodo,
   Plus,

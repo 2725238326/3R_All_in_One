@@ -19,9 +19,9 @@ import type {
 } from "../types";
 import type { JobListItem, BatchJobAction } from "../workflowHelpers";
 import type { PreviewAsset } from "../JobDetail";
+import type { WorkspaceTab } from "../workspaceTypes";
 
 export type ServiceState = "starting" | "ready" | "degraded";
-export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "agent" | "experiments" | "system" | "storage" | "dashboard";
 export type CreateMode = "single" | "batch";
 
 interface AppStore {

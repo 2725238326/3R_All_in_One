@@ -92,10 +92,10 @@ import { StoragePanel } from "./StoragePanel";
 import { DashboardPanel } from "./DashboardPanel";
 import { AgentWorkbench } from "./AgentWorkbench";
 import { ExperimentWorkbench } from "./ExperimentWorkbench";
+import type { WorkspaceTab } from "./workspaceTypes";
 
 export type ServiceState = "starting" | "ready" | "degraded";
 export type JobFilter = "all" | "running" | "attention" | "finished";
-export type WorkspaceTab = "queue" | "create" | "inspect" | "samples" | "compare" | "development" | "agent" | "experiments" | "system" | "storage" | "dashboard";
 export type CreateMode = "single" | "batch";
 
 type JobSocketEvent =
@@ -1004,6 +1004,7 @@ function App() {
               errorMessage={samplesError}
               modelCatalog={modelCatalog}
               onLocateJob={handleInspectJob}
+              onOpenCompare={openCompareBoard}
               onCopy={async (v, l) => { await navigator.clipboard.writeText(v); setInfoMessage(`${l}已复制`); }}
             />
           )}

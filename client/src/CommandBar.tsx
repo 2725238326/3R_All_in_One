@@ -1,4 +1,4 @@
-import { WorkspaceTab } from "./App";
+import type { WorkspaceTab } from "./workspaceTypes";
 import { StatusBadge } from "./uiPrimitives";
 
 interface CommandBarProps {

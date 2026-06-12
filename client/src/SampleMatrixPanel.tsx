@@ -39,6 +39,7 @@ export function SampleMatrixPanel(props: {
   errorMessage: string | null;
   modelCatalog: ModelCatalogItem[];
   onLocateJob?: (jobId: string) => void;
+  onOpenCompare?: (sampleId: string) => void;
   onCopy?: (value: string, label: string) => Promise<void>;
   compact?: boolean;
 }) {
@@ -356,6 +357,11 @@ export function SampleMatrixPanel(props: {
                     <button className="ghost-button small" disabled={batchTargetRows.length === 0} onClick={handleDownloadCompareReport} type="button">
                       导出报告
                     </button>
+                    {selectedRows.length === 1 && props.onOpenCompare ? (
+                      <button className="primary-button small" onClick={() => props.onOpenCompare?.(selectedRows[0].sample.id)} type="button">
+                        打开对比面板
+                      </button>
+                    ) : null}
                     <button
                       className="ghost-button small"
                       disabled={!props.onLocateJob || batchTargetJobIds.length === 0}
@@ -450,6 +456,18 @@ export function SampleMatrixPanel(props: {
                           {sampleStatusLabel(sample.status)}
                           {sample.seed_job_id ? " · 已关联 seed 任务" : " · 尚未关联 seed 任务"}
                         </p>
+                        <div className="sample-row-actions">
+                          {props.onOpenCompare ? (
+                            <button className="primary-button small" onClick={() => props.onOpenCompare?.(sample.id)} type="button">
+                              打开对比面板
+                            </button>
+                          ) : null}
+                          {sample.seed_job_id && props.onLocateJob ? (
+                            <button className="ghost-button small" onClick={() => props.onLocateJob?.(sample.seed_job_id!)} type="button">
+                              定位 seed 任务
+                            </button>
+                          ) : null}
+                        </div>
                         <div className={`sample-seed-callout ${sample.seed_job_id ? "available" : "missing"}`}>
                           <span className="mini-label">任务定位</span>
                           {sample.seed_job_id ? (

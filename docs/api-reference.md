@@ -19,6 +19,8 @@ POST   /api/jobs/{id}/dispatch # Dispatch to remote
 POST   /api/jobs/{id}/retry    # Retry failed job
 POST   /api/jobs/{id}/cancel   # Cancel running job
 POST   /api/jobs/{id}/duplicate # Duplicate as new job
+GET    /api/jobs/{id}/scene-meta # Get normalized scene_meta.json
+GET    /api/jobs/{id}/contract-check # Validate outputs against result contract
 GET    /api/jobs/{id}/bundle   # Download job bundle (.zip)
 ```
 
@@ -74,6 +76,24 @@ GET    /api/agent/validate?model={model} # Validate one blueprint
 GET    /api/agent/builds          # List environment build tasks
 GET    /api/agent/builds/{task_id} # Get build task status
 POST   /api/agent/build/{model}   # Start async environment build task
+POST   /api/agent/smoke/{model}   # Start async smoke check task
+POST   /api/agent/health/{model}  # Start async health check task
+POST   /api/agent/smoke-batch     # Start async batch smoke checks
+GET    /api/agent/checks          # List smoke/health check tasks
+GET    /api/agent/checks/{task_id} # Get smoke/health check task status
+GET    /api/agent/experiment-record/{job_id} # Get reproducible experiment manifest
+GET    /api/agent/experiment-record/{job_id}/download # Download experiment record zip
+```
+
+## Experiments
+
+```
+GET    /api/experiments/templates           # List experiment templates
+POST   /api/experiments/templates           # Create experiment template
+DELETE /api/experiments/templates/{id}      # Delete experiment template
+POST   /api/experiments/templates/{id}/run  # Create jobs from a template
+GET    /api/experiments/runs                # List experiment runs
+GET    /api/experiments/runs/{run_id}       # Get experiment run detail
 ```
 
 ## AI Advisor

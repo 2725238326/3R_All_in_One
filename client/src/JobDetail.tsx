@@ -34,6 +34,34 @@ export type PreviewAsset = {
   note?: string;
 };
 
+type SceneMetaPayload = {
+  jobId: string;
+  model: string;
+  sceneMeta: Record<string, unknown>;
+};
+
+type ContractCheckPayload = {
+  jobId: string;
+  contractCheck: {
+    model: string;
+    ok: boolean;
+    download_mode?: string | null;
+    required_files: string[];
+    satisfied_files: string[];
+    missing_files: string[];
+    optional_present: string[];
+    scene_meta_present: boolean;
+    output_file_count: number;
+  };
+};
+
+type ResultEvidenceState = {
+  loading: boolean;
+  error: string | null;
+  sceneMeta: SceneMetaPayload | null;
+  contractCheck: ContractCheckPayload | null;
+};
+
 export function JobDetail(props: {
   selectedJob: JobPayload;
   advisorState: AdvisorStatus;
@@ -80,6 +108,40 @@ export function JobDetail(props: {
   const attentionJob = job.status === "failed" || job.status === "cancelled";
   const batchActionBusy = props.actionKey?.startsWith("batch:") ?? false;
   const inspectorRhythm = buildInspectorRhythm(props.selectedJob, latestLogLine, criticalLogLine, advisorReport);
+  const [evidence, setEvidence] = useState<ResultEvidenceState>({
+    loading: false,
+    error: null,
+    sceneMeta: null,
+    contractCheck: null
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setEvidence((current) => ({ ...current, loading: true, error: null }));
+    Promise.all([
+      fetch(props.assetUrl(`/api/jobs/${job.job_id}/scene-meta`)),
+      fetch(props.assetUrl(`/api/jobs/${job.job_id}/contract-check`))
+    ])
+      .then(async ([sceneResponse, contractResponse]) => {
+        if (!sceneResponse.ok) throw new Error(`scene_meta 读取失败 (${sceneResponse.status})`);
+        if (!contractResponse.ok) throw new Error(`输出合同检查失败 (${contractResponse.status})`);
+        const [sceneMeta, contractCheck] = await Promise.all([
+          sceneResponse.json() as Promise<SceneMetaPayload>,
+          contractResponse.json() as Promise<ContractCheckPayload>
+        ]);
+        if (!cancelled) {
+          setEvidence({ loading: false, error: null, sceneMeta, contractCheck });
+        }
+      })
+      .catch((err: any) => {
+        if (!cancelled) {
+          setEvidence({ loading: false, error: err?.message || "结果证据读取失败", sceneMeta: null, contractCheck: null });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [job.job_id, props.assetUrl]);
 
   useEffect(() => {
     setLogQuery("");
@@ -244,6 +306,9 @@ export function JobDetail(props: {
           <button className="ghost-button small" type="button" onClick={() => scrollToInspectorSection("job-summary-panel")}>
             摘要
           </button>
+          <button className="ghost-button small" type="button" onClick={() => scrollToInspectorSection("job-evidence-panel")}>
+            证据链
+          </button>
           <button className="ghost-button small" type="button" onClick={() => scrollToInspectorSection("job-outputs-panel")}>
             输出
           </button>
@@ -278,6 +343,10 @@ export function JobDetail(props: {
               </div>
             </div>
             <SummaryPanel summary={props.selectedJob.result_summary} />
+          </article>
+
+          <article className="soft-panel inspector-panel" id="job-evidence-panel">
+            <ResultEvidencePanel evidence={evidence} summary={summary} />
           </article>
 
           <article className="soft-panel inspector-panel" id="job-outputs-panel">
@@ -573,4 +642,136 @@ function MetaCard(props: { label: string; value: string; compact?: boolean }) {
       <strong>{props.value}</strong>
     </article>
   );
+}
+
+function ResultEvidencePanel(props: { evidence: ResultEvidenceState; summary: JobPayload["result_summary"] }) {
+  const sceneMeta = props.evidence.sceneMeta?.sceneMeta ?? props.summary?.scene_meta ?? null;
+  const contract = props.evidence.contractCheck?.contractCheck ?? null;
+  const keyStats = buildSceneMetaStats(sceneMeta);
+  const artifactCount = typeof sceneMeta?.["artifact_count"] === "number" ? sceneMeta["artifact_count"] : props.summary?.artifacts?.length ?? 0;
+  const warnings = Array.isArray(sceneMeta?.["warnings"]) ? sceneMeta["warnings"] as unknown[] : [];
+
+  return (
+    <div className="result-evidence-panel">
+      <div className="section-head">
+        <div>
+          <h4>结果证据链</h4>
+          <p className="dense-text">scene_meta 归一化、输出合同检查和可复现实验记录共同说明本次任务产物是否完整。</p>
+        </div>
+        {props.evidence.loading ? (
+          <span className="section-pill">读取中</span>
+        ) : contract ? (
+          <StatusBadge state={contract.ok ? "ready" : "degraded"} label={contract.ok ? "合同通过" : "合同缺失"} />
+        ) : (
+          <span className="section-pill">待检查</span>
+        )}
+      </div>
+
+      {props.evidence.error ? <div className="critical-log-banner">{props.evidence.error}</div> : null}
+
+      <div className="evidence-kpi-grid">
+        <MetaCard label="合同状态" value={contract ? (contract.ok ? "PASS" : "MISSING") : "--"} />
+        <MetaCard label="必需产物" value={contract ? `${contract.satisfied_files.length}/${contract.required_files.length}` : "--"} />
+        <MetaCard label="scene_meta" value={contract ? (contract.scene_meta_present ? "已归档" : "缺失") : sceneMeta ? "已归档" : "--"} />
+        <MetaCard label="输出文件" value={String(contract?.output_file_count ?? artifactCount)} />
+      </div>
+
+      {keyStats.length > 0 ? (
+        <div className="evidence-stat-strip">
+          {keyStats.map((item) => (
+            <MetaCard key={item.label} label={item.label} value={item.value} />
+          ))}
+        </div>
+      ) : null}
+
+      <div className="evidence-two-col">
+        <div className="evidence-block">
+          <span className="mini-label">Required Outputs</span>
+          {contract && contract.required_files.length > 0 ? (
+            <div className="contract-file-list">
+              {contract.required_files.map((file) => {
+                const ok = contract.satisfied_files.includes(file);
+                return (
+                  <div className={`contract-file-row ${ok ? "ok" : "missing"}`} key={file}>
+                    <span>{ok ? "OK" : "MISS"}</span>
+                    <strong>{file}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="dense-text muted-text">该模型没有登记强制下载文件。</p>
+          )}
+        </div>
+
+        <div className="evidence-block">
+          <span className="mini-label">Scene Meta</span>
+          {sceneMeta ? (
+            <div className="scene-meta-list">
+              {buildSceneMetaRows(sceneMeta).map((item) => (
+                <div key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="dense-text muted-text">暂无 scene_meta，可在结果回传后自动生成。</p>
+          )}
+        </div>
+      </div>
+
+      {warnings.length > 0 ? (
+        <div className="evidence-warning-list">
+          <span className="mini-label">Warnings</span>
+          {warnings.slice(0, 4).map((warning, index) => (
+            <div className="overview-callout warning" key={`${String(warning)}-${index}`}>
+              <p className="dense-text">{String(warning)}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function buildSceneMetaStats(sceneMeta: Record<string, unknown> | null) {
+  if (!sceneMeta) return [];
+  return [
+    statFromSceneMeta(sceneMeta, "input_count", "输入"),
+    statFromSceneMeta(sceneMeta, "artifact_count", "产物"),
+    statFromSceneMeta(sceneMeta, "glb_count", "GLB"),
+    statFromSceneMeta(sceneMeta, "image_count", "图像"),
+    statFromSceneMeta(sceneMeta, "n_points", "点数"),
+    statFromSceneMeta(sceneMeta, "point_count", "点数")
+  ].filter(Boolean).slice(0, 5) as Array<{ label: string; value: string }>;
+}
+
+function statFromSceneMeta(sceneMeta: Record<string, unknown>, key: string, label: string) {
+  const value = sceneMeta[key];
+  return typeof value === "number" || typeof value === "string" ? { label, value: String(value) } : null;
+}
+
+function buildSceneMetaRows(sceneMeta: Record<string, unknown>) {
+  const rows = [
+    { key: "model", label: "模型" },
+    { key: "source_type", label: "输入类型" },
+    { key: "input_mode", label: "输入模式" },
+    { key: "seq_name", label: "序列" },
+    { key: "weights", label: "权重" },
+    { key: "demo_output_dir", label: "远端输出" }
+  ];
+  return rows
+    .map((row) => {
+      const value = sceneMeta[row.key];
+      if (value === undefined || value === null || value === "") return null;
+      return { label: row.label, value: formatEvidenceValue(value) };
+    })
+    .filter(Boolean) as Array<{ label: string; value: string }>;
+}
+
+function formatEvidenceValue(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item)).join(" / ");
+  if (typeof value === "object" && value !== null) return JSON.stringify(value);
+  return String(value);
 }

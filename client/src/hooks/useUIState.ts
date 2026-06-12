@@ -9,7 +9,8 @@
 
 import { useAppStore } from "../store";
 import type { PreviewAsset } from "../JobDetail";
-import type { WorkspaceTab, ServiceState } from "../store/appStore";
+import type { WorkspaceTab } from "../workspaceTypes";
+import type { ServiceState } from "../store/appStore";
 
 // ─────────────── Preview Asset ───────────────
 

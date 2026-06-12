@@ -13,6 +13,7 @@ export {
 
 export type {
   ServiceState,
-  WorkspaceTab,
   CreateMode,
 } from "./appStore";
+
+export type { WorkspaceTab } from "../workspaceTypes";

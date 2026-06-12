@@ -465,6 +465,8 @@ export type BackendStatusPayload = {
 export type InspectionPacket = {
   job: JobRecord;
   phaseDisplay: PhaseDisplay;
+  result_summary?: ResultSummary | null;
+  contract?: ModelContract | null;
   inspection: {
     attention: Array<{
       kind?: "warning" | "error" | "missing_output";
