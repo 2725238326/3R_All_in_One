@@ -710,6 +710,17 @@ function App() {
   }
 
   async function updateModel(value: string) {
+    const cachedContract = modelContracts[value];
+    if (cachedContract) {
+      const sourceTypes = cachedContract.allowedSourceTypes || (cachedContract as any).sourceTypes || [];
+      const fields = cachedContract.paramSchema?.fields || [];
+      setFormState({
+        model: value,
+        source_type: sourceTypes[0] || "images",
+        params: fields.reduce((acc, f) => ({ ...acc, [f.key]: f.default }), {}),
+      });
+      return;
+    }
     setFormState({ model: value, params: {} });
     if (!modelContracts[value]) {
       try {

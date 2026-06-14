@@ -1,0 +1,154 @@
+# Dream3R v1.1 Model Blueprint
+# 状态条件化候选几何融合模型。它不是 image-only 3R runner；正式输入是
+# proposal/cache 几何候选，synthetic demo 仅用于稳定通路验证。
+
+name: Dream3R
+key: dream3r
+family: dream3r
+version: "v1.1.0"
+paper:
+  title: "Dream3R: State-conditioned proposal fusion for feed-forward 3D reconstruction"
+  url: ""
+  venue: "Course project release"
+  year: 2026
+
+tags:
+  type: proposal_fusion
+  input: [proposal_cache]
+  output: [pointmap, confidence, expert_weights, report]
+  paradigm: state_conditioned_fusion
+  scene: both
+
+repo:
+  url: ""
+  branch: main
+  commit: ""
+  submodules: []
+  server_path: /hdd3/kykt26/code/dream3r
+
+environment:
+  conda_env: dream3r
+  python: "3.11"
+  torch: "2.5.1+cu121"
+  cuda_toolkit: /usr/local/cuda-12.6
+  cuda_arch: "7.5"
+  create_strategy: fresh
+  clone_source: ""
+  pip_requirements: ""
+  extra_pip: [torch, numpy]
+  exclude_pip: []
+  system_deps: []
+
+checkpoints: []
+
+build_steps: []
+
+resources:
+  gpu_memory_gb: 4.0
+  ram_gb: 8.0
+  disk_gb: 2.0
+  max_frames: ~
+  batch_size_limit: 16
+
+health_checks:
+  - name: dream3r_release_import
+    type: import
+    command: "PYTHONPATH=/hdd3/kykt26/code/dream3r/code python -c \"from dream3r.release_v11 import build_dream3r_v11_release; print('IMPORT_OK')\""
+    expected: "IMPORT_OK"
+    critical: true
+  - name: official_version
+    type: command
+    command: "PYTHONPATH=/hdd3/kykt26/code/dream3r/code python -c \"from dream3r.release_v11 import RELEASE_V11_VERSION; print(RELEASE_V11_VERSION)\""
+    expected: "v1.1.0"
+    critical: true
+
+smoke_test:
+  script: "PYTHONPATH=/hdd3/kykt26/code/dream3r/code python /hdd3/kykt26/code/dream3r/code/dream3r/scripts/run_dream3r_v11_demo.py --domain kitti --output /tmp/dream3r_smoke.json"
+  timeout_sec: 120
+  expected: "\"status\": \"pass\""
+  output_files: [/tmp/dream3r_smoke.json]
+
+runner:
+  script: runners/dream3r_runner.py
+  conda_env: dream3r
+  entry_pattern: dream3r_runner.py
+  default_params:
+    demo_mode: synthetic
+    domain: kitti
+    max_entries: 1
+    seed: 7
+    batch: 2
+    views: 2
+    patches: 8
+    d_memory: 32
+    device: auto
+  param_tiers:
+    fast:
+      demo_mode: synthetic
+      domain: kitti
+      batch: 1
+      patches: 4
+      device: cpu
+    standard:
+      demo_mode: synthetic
+      domain: kitti
+      batch: 2
+      patches: 8
+      device: auto
+    enhanced:
+      demo_mode: cache
+      domain: eth3d
+      max_entries: 5
+      device: auto
+
+output_contract:
+  required:
+    - key: scene_meta
+      pattern: "scene_meta.json"
+      type: json
+      description: "Platform metadata for Dream3R fusion outputs"
+    - key: report
+      pattern: "dream3r_report.json"
+      type: json
+      description: "Dream3R official v1.1 report"
+  optional:
+    - key: pointmap
+      pattern: "fused_pointmap.npy"
+      type: npy
+    - key: confidence
+      pattern: "fused_confidence.npy"
+      type: npy
+    - key: weights
+      pattern: "expert_weights.npy"
+      type: npy
+    - key: log
+      pattern: "runner.log"
+      type: txt
+  scene_meta:
+    - field: model
+      type: str
+    - field: release_version
+      type: str
+    - field: demo_mode
+      type: str
+    - field: domain
+      type: str
+    - field: domain_branch
+      type: str
+
+known_issues:
+  - id: dream3r-001
+    description: "Dream3R v1.1 正式版是候选几何融合模型，不是 image-only 重建模型。"
+    workaround: "先由 3R_All_in_One 生成或上传 proposal-cache，再调用 Dream3R 融合；synthetic 模式只用于通路演示。"
+    resolved: false
+    resolved_date: ""
+
+compatibility:
+  gpu_models: ["TITAN RTX", "CPU synthetic smoke"]
+  os: ["Ubuntu 20.04", "Windows development"]
+  glibc_min: "2.31"
+  driver_min: "535"
+
+status: integrated
+priority: high
+last_verified: "2026-06-14"

@@ -211,6 +211,8 @@ export function sourceTypeLabel(sourceType: string) {
       return "视频";
     case "frames":
       return "帧序列";
+    case "proposal_cache":
+      return "候选几何缓存";
     default:
       return sourceType;
   }

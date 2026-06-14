@@ -144,8 +144,8 @@ class TestAgentSmokeBatchEndpoint:
             finished = _poll_task(test_client, task["taskId"], timeout=15.0)
 
         result = finished["result"]
-        assert result["total"] == 7
-        assert result["ready"] == 7
+        assert result["total"] == 8
+        assert result["ready"] == 8
         assert result["not_ready"] == 0
 
     def test_smoke_batch_selected(self, test_client: TestClient):

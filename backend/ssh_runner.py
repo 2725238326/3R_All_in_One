@@ -48,6 +48,8 @@ class ServerConfig:
     remote_cut3r_repo: str = "/hdd3/kykt26/code/cut3r"
     remote_cut3r_env: str = "cut3r"
     remote_cut3r_model: str = "/hdd3/kykt26/code/cut3r/src/cut3r_512_dpt_4_64.pth"
+    remote_dream3r_repo: str = "/hdd3/kykt26/code/dream3r"
+    remote_dream3r_env: str = "dream3r"
 
 
 LOCAL_RUNNERS_DIR = runners_dir()
@@ -202,6 +204,7 @@ def run_remote_job(job_id: str) -> None:
             "fast3r": _run_fast3r_v1,
             "align3r": _run_align3r_v1,
             "cut3r": _run_cut3r_v1,
+            "dream3r": _run_dream3r_v11,
         }
         runner_spec = runner_spec_for(job.model)
         dispatcher = dispatchers.get(runner_spec.dispatch_key or "")
@@ -485,6 +488,33 @@ def _run_cut3r_v1(config: ServerConfig, job_id: str, remote_job_dir: str) -> Non
     _ssh_stream(config, cmd, job_id=job_id, phase="running_remote_matches", remote_job_dir=remote_job_dir, local_log_path=local_log)
 
 
+def _run_dream3r_v11(config: ServerConfig, job_id: str, remote_job_dir: str) -> None:
+    params = load_job(job_id).params or {}
+    runner_path = f"{config.remote_runners_dir}/dream3r_runner.py"
+    log_path = f"{remote_job_dir}/logs/runner.log"
+    local_log = get_job_dir(job_id) / "logs" / "runner.live.log"
+    cmd = (
+        f"set -o pipefail && "
+        f"cd {shlex.quote(config.remote_dream3r_repo)} && "
+        f"conda run --no-capture-output -n {shlex.quote(config.remote_dream3r_env)} "
+        f"python -u {shlex.quote(runner_path)} "
+        f"--job-dir {shlex.quote(remote_job_dir)} "
+        f"--repo {shlex.quote(config.remote_dream3r_repo)} "
+        f"--demo-mode {shlex.quote(str(params.get('demo_mode', 'synthetic')))} "
+        f"--domain {shlex.quote(str(params.get('domain', 'kitti')))} "
+        f"--max-entries {shlex.quote(str(params.get('max_entries', 1)))} "
+        f"--seed {shlex.quote(str(params.get('seed', 7)))} "
+        f"--batch {shlex.quote(str(params.get('batch', 2)))} "
+        f"--views {shlex.quote(str(params.get('views', 2)))} "
+        f"--patches {shlex.quote(str(params.get('patches', 8)))} "
+        f"--d-memory {shlex.quote(str(params.get('d_memory', 32)))} "
+        f"--device {shlex.quote(str(params.get('device', 'auto')))} "
+        f"2>&1 | tee {shlex.quote(log_path)}"
+    )
+    update_job(job_id, phase="running_remote_matches", progress_message="正在启动 Dream3R v1.1 候选几何融合...")
+    _ssh_stream(config, cmd, job_id=job_id, phase="running_remote_matches", remote_job_dir=remote_job_dir, local_log_path=local_log)
+
+
 def _kill_remote_job_processes(config: ServerConfig, remote_job_dir: str) -> dict:
     """Kill remote runner / model processes for a given job directory.
 
@@ -508,6 +538,7 @@ needles = (
     "fast3r_runner.py",
     "align3r_runner.py",
     "cut3r_runner.py",
+    "dream3r_runner.py",
     "demo.py",
     "run_job.py",
 )

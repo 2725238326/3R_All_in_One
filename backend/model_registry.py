@@ -129,6 +129,18 @@ MODEL_REGISTRY: dict[str, ModelSpec] = {
         research_priority=88,
         active_track=True,
     ),
+    "dream3r": ModelSpec(
+        value="dream3r",
+        label="Dream3R v1.1",
+        description="状态条件化候选几何融合模型",
+        param_family="proposal_fusion",
+        source_types=("proposal_cache",),
+        default_runner="dream3r_runner.py",
+        family="state_conditioned_proposal_fusion",
+        runner_status="release_v1_1_synthetic_and_cache_demo",
+        research_priority=102,
+        active_track=True,
+    ),
 }
 
 
@@ -270,6 +282,7 @@ SOURCE_TYPE_OPTIONS = [
     {"value": "images", "label": "图片"},
     {"value": "video", "label": "视频"},
     {"value": "frames", "label": "帧序列"},
+    {"value": "proposal_cache", "label": "候选几何缓存"},
 ]
 
 

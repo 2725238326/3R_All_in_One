@@ -1365,6 +1365,21 @@ def _validate_new_job_file_count(model: str, source_type: str, file_count: int) 
     return validate_create_request(model, source_type, file_count)
 
 
+def _validate_dream3r_job_params(model: str, raw_params: dict, files: list[UploadFile]) -> None:
+    if model != "dream3r":
+        return
+    demo_mode = str(raw_params.get("demo_mode") or "synthetic").strip().lower()
+    if demo_mode != "cache":
+        return
+    cache_files = [
+        upload
+        for upload in files
+        if Path(upload.filename or "").suffix.lower() in {".pt", ".pth"}
+    ]
+    if not cache_files:
+        raise HTTPException(status_code=400, detail="Dream3R cache 模式需要上传至少一个 .pt/.pth proposal-cache 文件。")
+
+
 def _validate_dispatchable(job) -> None:
     minimum = _minimum_input_count(job.model, job.source_type)
     if len(job.input_files) < minimum:
@@ -1519,6 +1534,7 @@ async def _create_job_from_request(
         window_size=window_size,
         window_overlap_ratio=window_overlap_ratio,
     )
+    _validate_dream3r_job_params(model, raw_params, files)
     uploaded = await _uploaded_files_to_bytes(files)
     return _create_job_from_uploaded_bytes(
         model=model,
@@ -1853,7 +1869,7 @@ async def create_job_view(
     window_wise: str = Form("false"),
     window_size: int = Form(100),
     window_overlap_ratio: float = Form(0.5),
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(default=[]),
 ):
     job = await _create_job_from_request(
         model=model,
@@ -2899,7 +2915,7 @@ async def create_job_api(
     window_wise: str = Form("false"),
     window_size: int = Form(100),
     window_overlap_ratio: float = Form(0.5),
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(default=[]),
 ):
     job = await _create_job_from_request(
         model=model,
@@ -2949,7 +2965,7 @@ async def create_compare_batch_api(
     window_wise: str = Form("false"),
     window_size: int = Form(100),
     window_overlap_ratio: float = Form(0.5),
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(default=[]),
 ):
     selected_models = _parse_model_selection(models)
     normalized_sample_id = sample_id.strip() or _new_compare_sample_id()

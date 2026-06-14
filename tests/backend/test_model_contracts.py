@@ -18,7 +18,7 @@ for _p in (str(ROOT), str(BACKEND_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from model_contracts import check_output_contract  # noqa: E402
+from model_contracts import check_output_contract, model_contract_for, validate_create_request  # noqa: E402
 
 
 class TestCheckOutputContract:
@@ -61,6 +61,25 @@ class TestCheckOutputContract:
         report = check_output_contract("pi3x", [])
         assert report["ok"] is True
         assert report["required_files"] == []
+
+    def test_dream3r_contract_and_create_validation(self):
+        contract = model_contract_for("dream3r")
+        assert contract["runnable"] is True
+        assert contract["paramFamily"] == "proposal_fusion"
+        assert contract["sourceTypes"] == ["proposal_cache"]
+        assert contract["minimumInputs"]["proposal_cache"] == 0
+
+        assert validate_create_request("dream3r", "proposal_cache", 0) == []
+
+        report = check_output_contract(
+            "dream3r",
+            [
+                "local_jobs/j/output/scene_meta.json",
+                "local_jobs/j/output/dream3r_report.json",
+            ],
+        )
+        assert report["ok"] is True
+        assert report["download_mode"] == "remote_tree_bundle"
 
 
 class TestContractCheckEndpoint:

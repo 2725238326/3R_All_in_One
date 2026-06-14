@@ -137,6 +137,50 @@ PARAM_SCHEMAS: dict[str, dict] = {
         "label": "流式序列参数",
         "fields": [],
     },
+    "proposal_fusion": {
+        "key": "proposal_fusion",
+        "label": "Dream3R 候选几何融合参数",
+        "fields": [
+            _field(
+                "demo_mode",
+                "Demo Mode",
+                "select",
+                "synthetic",
+                choices=[
+                    {"value": "synthetic", "label": "synthetic"},
+                    {"value": "cache", "label": "cache"},
+                ],
+                help_text="synthetic 用于稳定通路演示；cache 使用上传的 proposal-cache .pt 文件。",
+            ),
+            _field(
+                "domain",
+                "Domain",
+                "select",
+                "kitti",
+                choices=[
+                    {"value": "kitti", "label": "KITTI"},
+                    {"value": "eth3d", "label": "ETH3D"},
+                ],
+            ),
+            _field("max_entries", "Max Cache Entries", "number", 1, minimum=1, maximum=50),
+            _field("seed", "Synthetic Seed", "number", 7, minimum=0, maximum=1_000_000),
+            _field("batch", "Synthetic Batch", "number", 2, minimum=1, maximum=16),
+            _field("views", "Synthetic Views", "number", 2, minimum=1, maximum=16),
+            _field("patches", "Synthetic Patches", "number", 8, minimum=1, maximum=4096),
+            _field("d_memory", "Dream State Dim", "number", 32, minimum=1, maximum=4096),
+            _field(
+                "device",
+                "Device",
+                "select",
+                "auto",
+                choices=[
+                    {"value": "auto", "label": "auto"},
+                    {"value": "cpu", "label": "cpu"},
+                    {"value": "cuda", "label": "cuda"},
+                ],
+            ),
+        ],
+    },
     "research_catalog": {
         "key": "research_catalog",
         "label": "预研目录模型",
@@ -243,6 +287,27 @@ RESULT_CONTRACTS: dict[str, dict] = {
             "other": {"label": "其他产物", "description": "未归入主检查路径的产物。"},
         },
     },
+    "dream3r_fusion": {
+        "key": "dream3r_fusion",
+        "downloadMode": "remote_tree_bundle",
+        "requiredFiles": ["output/scene_meta.json", "output/dream3r_report.json"],
+        "optionalFiles": [
+            "output/fused_pointmap.npy",
+            "output/fused_confidence.npy",
+            "output/expert_weights.npy",
+            "logs/runner.log",
+        ],
+        "primaryRoles": ["metadata", "fusion_report", "pointmap", "confidence", "weights"],
+        "artifactRoles": {
+            "fusion_report": {"label": "融合报告", "description": "Dream3R v1.1 输出合同、分支、指标和边界说明。"},
+            "pointmap": {"label": "融合点图", "description": "Dream3R 输出的最终候选融合 pointmap 数组。"},
+            "confidence": {"label": "融合置信度", "description": "最终融合结果的置信度数组。"},
+            "weights": {"label": "候选权重", "description": "不同候选模型对融合结果的贡献权重。"},
+            "metadata": {"label": "运行元数据", "description": "scene_meta.json 和参数记录。"},
+            "log": {"label": "运行日志", "description": "runner.log 和远端执行日志。"},
+            "other": {"label": "其他产物", "description": "未归入主检查路径的产物。"},
+        },
+    },
     "research_catalog": {
         "key": "research_catalog",
         "downloadMode": "not_runnable",
@@ -262,6 +327,7 @@ MODEL_RESULT_CONTRACT_KEYS = {
     "fast3r": "fast3r_pointcloud",
     "align3r": "align3r_depth",
     "cut3r": "cut3r_streaming",
+    "dream3r": "dream3r_fusion",
 }
 
 
@@ -316,10 +382,33 @@ def build_job_params(model: str, raw_params: dict[str, Any] | None = None) -> di
             "vis_threshold": _float_param(raw_params, "vis_threshold", 1.5, 0.0, 10.0),
             "max_frames": _int_param(raw_params, "max_frames", 48, 1, 2000),
         }
+    if family == "proposal_fusion":
+        demo_mode = str(raw_params.get("demo_mode") or "synthetic").strip().lower()
+        if demo_mode not in {"synthetic", "cache"}:
+            demo_mode = "synthetic"
+        domain = str(raw_params.get("domain") or "kitti").strip().lower()
+        if domain not in {"kitti", "eth3d"}:
+            domain = "kitti"
+        device = str(raw_params.get("device") or "auto").strip().lower()
+        if device not in {"auto", "cpu", "cuda"}:
+            device = "auto"
+        return {
+            "demo_mode": demo_mode,
+            "domain": domain,
+            "max_entries": _int_param(raw_params, "max_entries", 1, 1, 50),
+            "seed": _int_param(raw_params, "seed", 7, 0, 1_000_000),
+            "batch": _int_param(raw_params, "batch", 2, 1, 16),
+            "views": _int_param(raw_params, "views", 2, 1, 16),
+            "patches": _int_param(raw_params, "patches", 8, 1, 4096),
+            "d_memory": _int_param(raw_params, "d_memory", 32, 1, 4096),
+            "device": device,
+        }
     return {}
 
 
 def minimum_input_count(model: str, source_type: str) -> int:
+    if model == "dream3r":
+        return 0
     family = param_family_for(model)
     if family in ("video_sequence", "streaming_sequence") and source_type == "video":
         return 1
@@ -345,6 +434,8 @@ def validate_create_request(model: str, source_type: str, file_count: int) -> li
     if source_type not in allowed:
         allowed_label = " / ".join(get_model_spec(model).source_types)
         errors.append(f"{get_model_spec(model).label} 仅支持这些输入类型：{allowed_label}")
+    if model == "dream3r" and source_type == "proposal_cache":
+        return errors
     if file_count <= 0:
         errors.append("没有上传输入文件。")
     if source_type == "video" and file_count != 1:
@@ -377,10 +468,8 @@ def result_contract_for(model: str) -> dict:
     return RESULT_CONTRACTS[key]
 
 
-def model_contract_for(model: str) -> dict:
-    catalog_entry = next((item for item in get_model_catalog_options() if item["value"] == model), None)
-    if not catalog_entry:
-        raise KeyError(f"未知模型：{model}")
+def _model_contract_from_catalog_entry(catalog_entry: dict) -> dict:
+    model = str(catalog_entry.get("value") or "")
     family = str(catalog_entry.get("param_family") or "research_catalog")
     param_schema = PARAM_SCHEMAS.get(family, PARAM_SCHEMAS["research_catalog"])
     runnable = bool(catalog_entry.get("runnable"))
@@ -415,8 +504,15 @@ def model_contract_for(model: str) -> dict:
     }
 
 
+def model_contract_for(model: str) -> dict:
+    catalog_entry = next((item for item in get_model_catalog_options() if item["value"] == model), None)
+    if not catalog_entry:
+        raise KeyError(f"未知模型：{model}")
+    return _model_contract_from_catalog_entry(catalog_entry)
+
+
 def all_model_contracts() -> list[dict]:
-    return [model_contract_for(item["value"]) for item in get_model_catalog_options()]
+    return [_model_contract_from_catalog_entry(item) for item in get_model_catalog_options()]
 
 
 def artifact_index_for(model: str, output_files: list[str]) -> dict:
@@ -537,6 +633,17 @@ def artifact_role_for(model: str, relative_path: str) -> str:
             return "camera"
         if "confidence" in lower or "conf" in lower:
             return "confidence"
+        return _generic_artifact_role(lower, suffix)
+
+    if model == "dream3r":
+        if lower == "dream3r_report.json":
+            return "fusion_report"
+        if "pointmap" in lower and suffix in {".npy", ".npz"}:
+            return "pointmap"
+        if "confidence" in lower and suffix in {".npy", ".npz"}:
+            return "confidence"
+        if "weight" in lower and suffix in {".npy", ".npz", ".json"}:
+            return "weights"
         return _generic_artifact_role(lower, suffix)
 
     return _generic_artifact_role(lower, suffix)
