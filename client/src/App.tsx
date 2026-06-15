@@ -221,6 +221,7 @@ function App() {
   // 本地状态（尚未迁移到 store）
   const [deploymentLoading, setDeploymentLoading] = useState(false);
   const selectedJobIdRef = useRef<string | null>(null);
+  const errorMessageRef = useRef<string | null>(null);
 
   const modelCatalog = useMemo(() => appState?.modelCatalog ?? [], [appState]);
   const modelContracts = useMemo(() => appState?.modelContracts ?? {}, [appState]);
@@ -278,6 +279,12 @@ function App() {
     [selectedModels, batchModelHints]
   );
 
+  function markServiceReady() {
+    setServiceState("ready");
+    setServiceMessage("本地服务已就绪");
+    if (errorMessageRef.current?.includes("本地服务暂时不可用")) setErrorMessage(null);
+  }
+
   async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${API_BASE}${path}`, init);
     if (!response.ok) {
@@ -292,6 +299,7 @@ function App() {
       const state = await fetchJson<AppState>("/api/app/state");
       setAppState(state);
       if (state.developmentLanes) setDevelopmentLanes(state.developmentLanes);
+      markServiceReady();
       return state;
     } catch (e) {
       console.error("Failed to refresh app state", e);
@@ -302,8 +310,7 @@ function App() {
     try {
       const payload = await fetchJson<JobsListPayload>("/api/jobs");
       setJobs(payload.jobs);
-      setServiceState("ready");
-      setServiceMessage("本地服务已就绪");
+      markServiceReady();
     } catch (error) {
       if (showError) setErrorMessage(friendlyError(error, "加载任务列表失败。"));
       setServiceState("degraded");
@@ -346,6 +353,10 @@ function App() {
   }, [selectedJobId]);
 
   useEffect(() => {
+    errorMessageRef.current = errorMessage;
+  }, [errorMessage]);
+
+  useEffect(() => {
     loadDesktopBackendStatus();
     refreshAppState();
     loadJobs();
@@ -365,13 +376,13 @@ function App() {
     function connect() {
       socket = new WebSocket(jobSocketUrl("__all__"));
       socket.onopen = () => {
-        setServiceState("ready");
-        setServiceMessage("本地服务已就绪");
+        markServiceReady();
       };
       socket.onmessage = (event) => {
         const payload = JSON.parse(event.data) as JobSocketEvent;
         if (payload.type === "jobs.snapshot") {
           setJobs(payload.jobs);
+          markServiceReady();
           return;
         }
         if (payload.type === "job.updated") {
@@ -524,11 +535,12 @@ function App() {
   async function openAdvisorSettings() {
     setAdvisorConfigLoading(true);
     try {
-      const [config, providers, diagnostics] = await Promise.all([
+      const [config, providersPayload, diagnostics] = await Promise.all([
         fetchJson<AdvisorConfig>("/api/advisor/config"),
-        fetchJson<AdvisorProvider[]>("/api/advisor/providers"),
+        fetchJson<AdvisorProvider[] | { providers?: AdvisorProvider[] }>("/api/advisor/providers"),
         fetchJson<AdvisorDiagnostics>("/api/advisor/diagnostics")
       ]);
+      const providers = Array.isArray(providersPayload) ? providersPayload : providersPayload.providers ?? [];
       setAdvisorForm(config);
       setAdvisorProviders(providers);
       setAdvisorDiagnostics(diagnostics);
@@ -545,7 +557,7 @@ function App() {
     setAdvisorConfigSaving(true);
     try {
       await fetchJson("/api/advisor/config", {
-        method: "PATCH",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(advisorForm),
       });
@@ -1085,9 +1097,16 @@ function App() {
             </div>
             <form className="form-stack settings-form" onSubmit={saveAdvisorSettings}>
               <label className="field"><span>启用</span><input type="checkbox" checked={advisorForm.enabled} onChange={e => setAdvisorForm({ enabled: e.target.checked })} /></label>
-              <label className="field"><span>Provider</span><select value={advisorForm.model} onChange={e => setAdvisorForm({ model: e.target.value })}>{advisorProviders.map(p => <optgroup key={p.id} label={p.label}>{p.models.map(m => <option key={m} value={m}>{m}</option>)}</optgroup>)}</select></label>
+              <label className="field"><span>Provider / Model</span><select value={advisorForm.model} onChange={e => setAdvisorForm({ model: e.target.value })}>{advisorProviders.length > 0 ? advisorProviders.map((p: any) => <optgroup key={p.id ?? p.value ?? p.label} label={p.label}>{(p.models ?? []).map((m: string) => <option key={m} value={m}>{m}</option>)}</optgroup>) : <option value={advisorForm.model}>{advisorForm.model || "gpt-4o-mini"}</option>}</select></label>
               <label className="field"><span>Base URL</span><input value={advisorForm.baseUrl} onChange={e => setAdvisorForm({ baseUrl: e.target.value })} /></label>
               <label className="field"><span>API Key</span><input type="password" value={advisorForm.apiKey} onChange={e => setAdvisorForm({ apiKey: e.target.value })} placeholder={advisorForm.hasApiKey ? "已保存" : "输入 Key"} /></label>
+              {advisorDiagnostics?.checks?.length ? (
+                <div className="advisor-diagnostics-list">
+                  {advisorDiagnostics.checks.slice(0, 4).map((check: any) => (
+                    <span key={check.key ?? check.name} className={check.ok || check.passed ? "ok" : ""}>{check.message}</span>
+                  ))}
+                </div>
+              ) : null}
               <div className="settings-modal-actions"><button className="primary-button" type="submit">保存</button></div>
             </form>
           </div>

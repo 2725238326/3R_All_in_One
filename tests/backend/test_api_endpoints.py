@@ -98,12 +98,40 @@ class TestModelsEndpoints:
         """/api/models/catalog 应返回模型列表"""
         response = test_client.get("/api/models/catalog")
         assert response.status_code == 200
+
+        models = {item["value"]: item for item in response.json()["models"]}
+        assert models["align3r"]["runnable"] is False
+        assert "runner" in models["align3r"]["launch_blocker"].lower()
     
     def test_get_model_contract(self, test_client: TestClient):
         """获取模型契约"""
         response = test_client.get("/api/models/monst3r/contract")
         # 可能返回 200 或 404（如果模型未配置）
         assert response.status_code in (200, 404)
+
+    def test_align3r_catalog_only_contract(self, test_client: TestClient):
+        """Align3R runner 未 smoke 前只保留目录条目，不开放创建。"""
+        response = test_client.get("/api/models/align3r/contract")
+        assert response.status_code == 200
+
+        contract = response.json()
+        assert contract["runnable"] is False
+        assert contract["runner"]["downloadMode"] == "not_runnable"
+        assert contract["runner"]["runnerFile"] is None
+        assert contract["launchBlocker"]
+
+    def test_align3r_validate_create_is_blocked(self, test_client: TestClient):
+        """旧 UI 或手工请求不能绕过 catalog-only 阻塞。"""
+        response = test_client.post(
+            "/api/models/align3r/validate-create",
+            json={"sourceType": "frames", "fileCount": 12},
+        )
+        assert response.status_code == 200
+
+        payload = response.json()
+        assert payload["ok"] is False
+        assert payload["errors"]
+        assert "目录模型" in payload["errors"][0]
 
 
 class TestRunnerEndpoints:
@@ -183,6 +211,15 @@ class TestCORS:
         )
         # OPTIONS 请求应该被处理
         assert response.status_code in (200, 405)
+
+    def test_preview_origin_allowed(self, test_client: TestClient):
+        """Vite production preview 端口也应允许访问后端 API。"""
+        response = test_client.get(
+            "/api/health",
+            headers={"Origin": "http://127.0.0.1:4173"},
+        )
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == "http://127.0.0.1:4173"
 
 
 class TestErrorHandling:

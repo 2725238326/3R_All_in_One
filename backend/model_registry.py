@@ -105,18 +105,6 @@ MODEL_REGISTRY: dict[str, ModelSpec] = {
         runner_status="validated_smoke_attention_fallback",
         research_priority=90,
     ),
-    "align3r": ModelSpec(
-        value="align3r",
-        label="Align3R",
-        description="动态视频深度一致性与动态点云",
-        param_family="video_sequence",
-        source_types=("video", "frames"),
-        default_runner="align3r_runner.py",
-        family="video_depth_consistency",
-        runner_status="runner_ready",
-        research_priority=94,
-        active_track=True,
-    ),
     "cut3r": ModelSpec(
         value="cut3r",
         label="CUT3R",
@@ -179,8 +167,12 @@ MODEL_CATALOG.update(
             family="video_depth_consistency",
             param_family="video_sequence",
             source_types=("video", "frames"),
-            runner_status="runner_ready",
+            runner_status="blocked_runner_contract",
             research_priority=94,
+            launch_blocker=(
+                "服务器 Align3R 仓库没有平台 runner 当前调用的 demo.py；"
+                "需要完成 tool/demo.py 适配和远端 smoke 后再开放创建。"
+            ),
         ),
         "fast3r": ModelCatalogEntry(
             value="fast3r",

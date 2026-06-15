@@ -228,6 +228,8 @@ app.add_middleware(
     allow_origins=[
         "http://127.0.0.1:5173",
         "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
         "http://127.0.0.1:1420",
         "http://localhost:1420",
         "http://tauri.localhost",
@@ -638,8 +640,8 @@ STATUS_LABELS = {
 
 DELIVERY_GAPS = [
     {
-        "title": "Align3R / CUT3R 还缺 runner 和平台 smoke",
-        "detail": "Spann3R、Fast3R 已完成平台 E2E；Align3R / CUT3R 的 curope 已解锁，下一步是补标准 runner、输出合同和首个平台开户 smoke。",
+        "title": "Align3R 暂停创建，等待 runner 适配",
+        "detail": "CUT3R 已进入可运行线；Align3R 远端仓库入口与平台 runner 合同不一致，需完成 tool/demo.py 适配和首个 smoke 后再开放创建。",
     },
     {
         "title": "远端取消与清理仍然不够硬",
@@ -1381,10 +1383,9 @@ def _validate_dream3r_job_params(model: str, raw_params: dict, files: list[Uploa
 
 
 def _validate_dispatchable(job) -> None:
-    minimum = _minimum_input_count(job.model, job.source_type)
-    if len(job.input_files) < minimum:
-        unit = "个视频文件" if job.source_type == "video" else "张图片或帧"
-        raise HTTPException(status_code=400, detail=f"{get_model_spec(job.model).label} 至少需要 {minimum} {unit}。")
+    errors = validate_create_request(job.model, job.source_type, len(job.input_files))
+    if errors:
+        raise HTTPException(status_code=400, detail="；".join(errors))
 
 
 def _parse_json_object(value: str | None, field_name: str) -> dict:

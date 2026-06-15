@@ -1,0 +1,84 @@
+{
+  "dataset": "ETH3D low_res_many_view",
+  "scene": "delivery_area",
+  "camera": "images_rig_cam4_undistorted",
+  "remote_dir": "/hdd3/kykt26/data/eth3d/low_res_many_view/training/delivery_area/images/images_rig_cam4_undistorted",
+  "total_remote_frames": 237,
+  "selected_frame_count": 12,
+  "selection_policy": "12 evenly spaced representative frames, avoiding sequence edges",
+  "recommended_use": "PPT/software demo input material; stable indoor geometry and lighting",
+  "selected": [
+    {
+      "order": 1,
+      "index": 19,
+      "original_name": "1477843918881959523.png",
+      "local_name": "eth3d_delivery_area_01.png"
+    },
+    {
+      "order": 2,
+      "index": 37,
+      "original_name": "1477843920209063523.png",
+      "local_name": "eth3d_delivery_area_02.png"
+    },
+    {
+      "order": 3,
+      "index": 55,
+      "original_name": "1477843921536167523.png",
+      "local_name": "eth3d_delivery_area_03.png"
+    },
+    {
+      "order": 4,
+      "index": 73,
+      "original_name": "1477843922863271523.png",
+      "local_name": "eth3d_delivery_area_04.png"
+    },
+    {
+      "order": 5,
+      "index": 91,
+      "original_name": "1477843924190375523.png",
+      "local_name": "eth3d_delivery_area_05.png"
+    },
+    {
+      "order": 6,
+      "index": 109,
+      "original_name": "1477843925517479523.png",
+      "local_name": "eth3d_delivery_area_06.png"
+    },
+    {
+      "order": 7,
+      "index": 127,
+      "original_name": "1477843926844583523.png",
+      "local_name": "eth3d_delivery_area_07.png"
+    },
+    {
+      "order": 8,
+      "index": 145,
+      "original_name": "1477843928171687523.png",
+      "local_name": "eth3d_delivery_area_08.png"
+    },
+    {
+      "order": 9,
+      "index": 163,
+      "original_name": "1477843929498791523.png",
+      "local_name": "eth3d_delivery_area_09.png"
+    },
+    {
+      "order": 10,
+      "index": 181,
+      "original_name": "1477843930825895523.png",
+      "local_name": "eth3d_delivery_area_10.png"
+    },
+    {
+      "order": 11,
+      "index": 199,
+      "original_name": "1477843932152999523.png",
+      "local_name": "eth3d_delivery_area_11.png"
+    },
+    {
+      "order": 12,
+      "index": 217,
+      "original_name": "1477843933480103523.png",
+      "local_name": "eth3d_delivery_area_12.png"
+    }
+  ]
+}

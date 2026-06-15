@@ -173,134 +173,135 @@ export function InspectWorkspace({
         </div>
       </aside>
 
-      {/* Column 2: Artifacts & Results */}
-      <section className="inspect-pane center artifacts-pane">
-        <PanelTitle eyebrow="Artifacts" title="产物与分组" />
+      <main className="inspect-main">
+        <section className="inspect-pane center artifacts-pane">
+          <PanelTitle eyebrow="Artifacts" title="产物与证据" />
 
-        {details.viserSupported && (
-          <div style={{ marginBottom: '16px' }}>
-            <ViserPanel jobId={job.job_id} />
+          {details.viserSupported && (
+            <div>
+              <ViserPanel jobId={job.job_id} />
+            </div>
+          )}
+
+          <div className="primary-artifacts-strip">
+            {(artifactIndex?.primaryArtifacts ?? []).map((art) => {
+              const isImageOrVideo = art.kind === 'image' || art.kind === 'video';
+              return (
+                <div
+                  key={art.relativePath}
+                  className={`primary-art-card ${isImageOrVideo ? 'clickable' : ''}`}
+                  onClick={() => {
+                    if (art.kind === 'image' || art.kind === 'video') {
+                      onPreviewAsset({ url: assetUrl(art.relativePath), name: art.label, kind: art.kind });
+                    }
+                  }}
+                >
+                  {art.kind === 'image' && <img src={assetUrl(art.relativePath)} alt={art.label} />}
+                  <div className="dense-text">
+                    <strong>{art.label}</strong>
+                    {!isImageOrVideo && (
+                      <div style={{ marginTop: '4px' }}>
+                        <button className="ghost-button small" onClick={(e) => { e.stopPropagation(); onOpenOutput(art.relativePath); }}>打开</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
 
-        <div className="primary-artifacts-strip" style={{ display: 'flex', gap: '12px', overflowX: 'auto', padding: '12px 0' }}>
-          {(artifactIndex?.primaryArtifacts ?? []).map((art) => {
-            const isImageOrVideo = art.kind === 'image' || art.kind === 'video';
-            return (
-              <div
-                key={art.relativePath}
-                className={`primary-art-card ${isImageOrVideo ? 'clickable' : ''}`}
-                onClick={() => {
-                  if (art.kind === 'image' || art.kind === 'video') {
-                    onPreviewAsset({ url: assetUrl(art.relativePath), name: art.label, kind: art.kind });
-                  }
-                }}
-              >
-                {art.kind === 'image' && <img src={assetUrl(art.relativePath)} alt={art.label} style={{ width: '120px', height: '80px', objectFit: 'cover', borderRadius: '8px' }} />}
-                <div className="dense-text">
-                  <strong>{art.label}</strong>
-                  {!isImageOrVideo && (
-                    <div style={{ marginTop: '4px' }}>
-                      <button className="ghost-button small" onClick={(e) => { e.stopPropagation(); onOpenOutput(art.relativePath); }}>打开</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+          <ResultEvidencePanel evidence={evidence} summary={inspection.result_summary ?? null} />
 
-        <ResultEvidencePanel evidence={evidence} summary={inspection.result_summary ?? null} />
-
-        <div className="artifact-groups" style={{ marginTop: '24px' }}>
-          {(artifactIndex?.groups ?? []).map((group) => {
-            const groupArtifacts = group.artifacts ?? [];
-            return (
-            <details key={group.key} className="output-section blue" open>
-              <summary>
-                <div>
-                  <strong>{group.label}</strong>
-                  <p className="dense-text">{group.description}</p>
-                </div>
-                <span className="section-pill">{groupArtifacts.length}</span>
-              </summary>
-              <div className="output-grid">
-                {groupArtifacts.map((art) => (
-                  <div key={art.relativePath} className="output-card">
-                    <div className="dense-text">
-                      <strong>{art.name}</strong>
-                      <p>{art.note || art.role}</p>
-                      <div className="output-actions">
-                        {(art.kind === 'image' || art.kind === 'video') && (
-                          <button onClick={() => {
-                            if (art.kind === 'image' || art.kind === 'video') {
-                              onPreviewAsset({ url: assetUrl(art.relativePath), name: art.name, kind: art.kind });
-                            }
-                          }}>预览</button>
-                        )}
-                        <button onClick={() => onOpenOutput(art.relativePath)}>打开</button>
+          <div className="artifact-groups">
+            {(artifactIndex?.groups ?? []).map((group) => {
+              const groupArtifacts = group.artifacts ?? [];
+              return (
+              <details key={group.key} className="output-section blue" open>
+                <summary>
+                  <div>
+                    <strong>{group.label}</strong>
+                    <p className="dense-text">{group.description}</p>
+                  </div>
+                  <span className="section-pill">{groupArtifacts.length}</span>
+                </summary>
+                <div className="output-grid">
+                  {groupArtifacts.map((art) => (
+                    <div key={art.relativePath} className="output-card">
+                      <div className="dense-text">
+                        <strong>{art.name}</strong>
+                        <p>{art.note || art.role}</p>
+                        <div className="output-actions">
+                          {(art.kind === 'image' || art.kind === 'video') && (
+                            <button onClick={() => {
+                              if (art.kind === 'image' || art.kind === 'video') {
+                                onPreviewAsset({ url: assetUrl(art.relativePath), name: art.name, kind: art.kind });
+                              }
+                            }}>预览</button>
+                          )}
+                          <button onClick={() => onOpenOutput(art.relativePath)}>打开</button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </details>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="inspect-pane analysis-pane">
+          <PanelTitle eyebrow="Analysis" title="日志与评估" />
+
+          <div className="analysis-grid">
+            <details className="advanced-panel" open>
+              <summary>辅助评估 (Advisor)</summary>
+              <div className="analysis-panel-body">
+                <AdvisorPanel report={advisorReport ?? null} />
+                <div className="advisor-workbench-actions">
+                  <button className="ghost-button small" onClick={onConfigureAdvisor}>配置</button>
+                  <button className="primary-button small" onClick={() => onAction(`/api/jobs/${job.job_id}/advisor/evaluate`, 'advisor')}>重新评估</button>
+                </div>
               </div>
             </details>
-            );
-          })}
-        </div>
-      </section>
 
-      {/* Column 3: Analysis & Logs */}
-      <section className="inspect-pane analysis-pane">
-        <PanelTitle eyebrow="Analysis" title="日志与评估" />
-        
-        <details className="advanced-panel" open>
-          <summary>辅助评估 (Advisor)</summary>
-          <div style={{ padding: '12px' }}>
-            <AdvisorPanel report={advisorReport ?? null} />
-            <div className="advisor-workbench-actions" style={{ marginTop: '12px' }}>
-              <button className="ghost-button small" onClick={onConfigureAdvisor}>配置</button>
-              <button className="primary-button small" onClick={() => onAction(`/api/jobs/${job.job_id}/advisor/evaluate`, 'advisor')}>重新评估</button>
+            <details className="advanced-panel" open>
+              <summary>人工评分 (Evaluation)</summary>
+              <div className="analysis-panel-body">
+                <EvaluationPanel
+                  evaluation={evaluation ?? null}
+                  jobId={job.job_id}
+                  saving={savingEvaluation}
+                  onSave={onSaveEvaluation}
+                />
+              </div>
+            </details>
+          </div>
+
+          <div className="logs-section">
+            <div className="section-head">
+              <strong>日志回传</strong>
+              <input
+                type="search"
+                placeholder="搜索日志..."
+                value={logQuery}
+                onChange={e => setLogQuery(e.target.value)}
+                className="dense-text log-search"
+              />
+            </div>
+            <div className="log-list">
+              {filteredLogs.map((log) => (
+                <div key={log.relative_path} className="log-card">
+                  <small>{log.name}</small>
+                  <pre className="dense-text">
+                    <HighlightedLogTail query={normalizedLogQuery} text={log.tail} />
+                  </pre>
+                </div>
+              ))}
             </div>
           </div>
-        </details>
-
-        <details className="advanced-panel" style={{ marginTop: '16px' }} open>
-          <summary>人工评分 (Evaluation)</summary>
-          <div style={{ padding: '12px' }}>
-            <EvaluationPanel 
-              evaluation={evaluation ?? null} 
-              jobId={job.job_id} 
-              saving={savingEvaluation} 
-              onSave={onSaveEvaluation} 
-            />
-          </div>
-        </details>
-
-        <div className="logs-section" style={{ marginTop: '24px' }}>
-          <div className="section-head">
-            <strong>日志回传</strong>
-            <input 
-              type="search" 
-              placeholder="搜索日志..." 
-              value={logQuery} 
-              onChange={e => setLogQuery(e.target.value)}
-              className="dense-text"
-              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--line-default)' }}
-            />
-          </div>
-          <div className="log-list" style={{ marginTop: '12px', maxHeight: '400px', overflowY: 'auto' }}>
-            {filteredLogs.map((log) => (
-              <div key={log.relative_path} className="log-card">
-                <small>{log.name}</small>
-                <pre className="dense-text">
-                  <HighlightedLogTail query={normalizedLogQuery} text={log.tail} />
-                </pre>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+        </section>
+      </main>
     </div>
   );
 }

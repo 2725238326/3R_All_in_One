@@ -123,6 +123,7 @@ export function runnerStatusLabel(status: string) {
     smoke_ready_attention_fallback: "Smoke 已过（需 attention fallback）",
     env_partial: "环境部分就绪",
     env_blocked_curope: "环境受 curope 阻塞",
+    blocked_runner_contract: "Runner 合同阻塞",
     runner_pending_smoke: "Runner/Smoke 待补",
     planned: "待接入",
     frontier_research: "前沿预研",
