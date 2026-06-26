@@ -11,6 +11,7 @@ import type { ModelCatalogItem } from "./displayHelpers";
 import { backendStatusText, modelDisplayName } from "./displayHelpers";
 import { buildDeploymentComponentRows } from "./deploymentHelpers";
 import { ResourceMonitor } from "./ResourceMonitor";
+import type { WorkspaceTab } from "./workspaceTypes";
 
 export interface SystemWorkbenchProps {
   backendStatus: BackendStatusPayload | null;
@@ -23,6 +24,7 @@ export interface SystemWorkbenchProps {
   openAdvisorSettings: () => void;
   loadDeploymentStatus: (showError?: boolean, forceRefresh?: boolean) => void;
   selectedJobId: string | null;
+  onOpenWorkspace: (tab: WorkspaceTab) => void;
   onRecommendParams?: (jobId: string) => void;
   onDiagnoseFailure?: (jobId: string) => void;
 }
@@ -65,20 +67,20 @@ export function SystemWorkbench(props: SystemWorkbenchProps) {
               {props.advisorReady ? `就绪 · ${props.advisorState.model}` : "未配置"}
             </span>
           </div>
-          <div style={{ marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <button className="ghost-button small" onClick={props.openAdvisorSettings}>
+          <div className="system-card-actions">
+            <button className="primary-button compact" onClick={props.openAdvisorSettings}>
               打开配置
             </button>
             {props.selectedJobId && props.advisorReady && (
               <>
                 <button
-                  className="ghost-button small"
+                  className="ghost-button"
                   onClick={() => props.selectedJobId && props.onRecommendParams?.(props.selectedJobId)}
                 >
                   参数推荐
                 </button>
                 <button
-                  className="ghost-button small"
+                  className="ghost-button"
                   onClick={() => props.selectedJobId && props.onDiagnoseFailure?.(props.selectedJobId)}
                 >
                   故障诊断
@@ -88,6 +90,23 @@ export function SystemWorkbench(props: SystemWorkbenchProps) {
           </div>
         </div>
       </div>
+
+      <details className="section-card system-corner-tools">
+        <summary>
+          <span>
+            <strong>低频工具</strong>
+            <small>研发记录和磁盘清理入口，演示主流程默认收起。</small>
+          </span>
+        </summary>
+        <div className="system-corner-grid">
+          <button className="ghost-button" type="button" onClick={() => props.onOpenWorkspace("development")}>
+            研发加速
+          </button>
+          <button className="ghost-button" type="button" onClick={() => props.onOpenWorkspace("storage")}>
+            存储管理
+          </button>
+        </div>
+      </details>
 
       <div className="section-card">
         <div className="section-card-header">

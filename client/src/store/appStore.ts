@@ -150,13 +150,15 @@ const initialFormState = {
 
 const initialAdvisorForm: AdvisorConfig = {
   enabled: false,
+  provider: "custom_openai_compatible",
   baseUrl: "",
   apiKey: "",
   model: "gpt-4o-mini",
-  maxTokens: 2048,
+  temperature: 0.2,
+  maxTokens: 1200,
   systemPrompt: "",
-  structuredOutput: true,
-  timeoutSeconds: 60,
+  structuredOutput: "auto",
+  timeoutSeconds: 90,
 };
 
 export const useAppStore = create<AppStore>()(

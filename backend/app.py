@@ -663,6 +663,7 @@ DELIVERY_GAPS = [
 
 ACTIVE_PHASE_CODES = [code for code, *_ in PHASE_FLOW[:6]]
 PROGRESS_PATTERN = re.compile(r"(\d+)\s*/\s*(\d+)")
+PERCENT_PATTERN = re.compile(r"(?<!\d)(\d{1,3})\s*%")
 COMPARE_VISUAL_KINDS = {"image", "video", "pointcloud", "model3d"}
 COMPARE_PRIMARY_ROLES = {
     "matches",
@@ -865,6 +866,34 @@ def _extract_progress_ratio(progress_message: str | None) -> float | None:
     return None
 
 
+def _extract_stage_progress(progress_message: str | None) -> dict | None:
+    if not progress_message:
+        return None
+
+    ratio = _extract_progress_ratio(progress_message)
+    percent: int | None = None
+    percent_matches = PERCENT_PATTERN.findall(progress_message)
+    if percent_matches:
+        percent = max(0, min(100, int(percent_matches[-1])))
+    elif ratio is not None:
+        percent = int(round(ratio * 100))
+
+    if ratio is None and percent is None:
+        return None
+
+    count_match = None
+    matches = PROGRESS_PATTERN.findall(progress_message)
+    if matches:
+        done_str, total_str = matches[-1]
+        count_match = {"done": int(done_str), "total": int(total_str)}
+
+    return {
+        "percent": percent,
+        "ratio": ratio,
+        "count": count_match,
+    }
+
+
 def build_phase_display(phase: str, status: str, progress_message: str | None = None) -> dict:
     known_phases = {code: (label, hint, start, end) for code, label, hint, start, end in PHASE_FLOW}
     if phase not in known_phases:
@@ -913,6 +942,8 @@ def build_phase_display(phase: str, status: str, progress_message: str | None = 
         "label": label,
         "description": description,
         "percent": percent,
+        "stageProgress": _extract_stage_progress(progress_message),
+        "stage_progress": _extract_stage_progress(progress_message),
         "steps": steps,
     }
 

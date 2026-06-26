@@ -26,6 +26,22 @@ export type PhaseDisplay = {
   label: string;
   description: string;
   percent: number;
+  stageProgress?: {
+    percent?: number | null;
+    ratio?: number | null;
+    count?: {
+      done: number;
+      total: number;
+    } | null;
+  } | null;
+  stage_progress?: {
+    percent?: number | null;
+    ratio?: number | null;
+    count?: {
+      done: number;
+      total: number;
+    } | null;
+  } | null;
   steps: Array<{
     code: string;
     label: string;
@@ -134,22 +150,30 @@ export type AdvisorStatus = {
 
 export type AdvisorConfig = {
   enabled: boolean;
+  provider?: string;
   baseUrl: string;
   apiKey: string;
   model: string;
+  temperature?: number;
   maxTokens: number;
   systemPrompt: string;
-  structuredOutput: boolean;
+  structuredOutput: "auto" | "json_schema" | "json_object" | "prompt_only";
   timeoutSeconds: number;
   hasApiKey?: boolean; // compatibility/info
 };
 
 export type AdvisorProvider = {
-  id: string;
+  id?: string;
+  value?: string;
   label: string;
-  description: string;
-  models: string[];
-  supportsStructuredOutput: boolean;
+  description?: string;
+  notes?: string;
+  baseUrl?: string;
+  base_url?: string;
+  models?: string[];
+  structuredOutput?: "auto" | "json_schema" | "json_object" | "prompt_only";
+  structured_output?: "auto" | "json_schema" | "json_object" | "prompt_only";
+  supportsStructuredOutput?: boolean;
 };
 
 export type AdvisorDiagnostics = {

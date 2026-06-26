@@ -94,19 +94,17 @@ export function ViserPanel({ jobId }: ViserPanelProps) {
 
   const status: ViserStatus = (session?.status as ViserStatus) || "idle";
   const url = session?.url || null;
+  const dependencyHint = session?.lastError?.includes("No module named 'tyro'")
+    ? "远端 MonST3R 可视化环境缺少 tyro 依赖。主任务结果不受影响；需要使用 4D viewer 时，在远端环境补装后再启动。"
+    : null;
 
   return (
-    <div className="viser-panel" style={{
-      border: "1px solid var(--border-soft, #e5e7eb)",
-      borderRadius: "8px",
-      padding: "12px",
-      background: "var(--surface-soft, #fafafa)",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+    <div className="viser-panel">
+      <div className="viser-panel-head">
         <div>
-          <strong style={{ fontSize: "13px" }}>4D 时序可视化（viser）</strong>
-          <p className="dense-text" style={{ margin: "4px 0 0", color: "var(--text-soft, #6b7280)", fontSize: "11px" }}>
-            把远端 viser 服务通过 SSH 隧道映射到本地，浏览器拖动时间轴查看动态点云。
+          <strong>4D 时序可视化（可选）</strong>
+          <p className="dense-text">
+            MonST3R 的动态点云预览需要远端启动 viser 服务，再通过 SSH 隧道映射到本地。它只影响交互预览，不影响任务输出和日志检查。
           </p>
         </div>
         <ViserStatusPill status={status} />
@@ -118,23 +116,20 @@ export function ViserPanel({ jobId }: ViserPanelProps) {
         </div>
       )}
 
-      {session?.lastError && status === "failed" && (
-        <pre style={{
-          background: "var(--surface-deep, #1f2937)",
-          color: "var(--text-on-deep, #e5e7eb)",
-          padding: "8px",
-          fontSize: "11px",
-          maxHeight: "120px",
-          overflow: "auto",
-          borderRadius: "4px",
-          marginBottom: "8px",
-          whiteSpace: "pre-wrap",
-        }}>
-          {session.lastError}
-        </pre>
+      {status === "failed" && (
+        <div className="viser-note">
+          <strong>可视化服务没有启动成功</strong>
+          <p>{dependencyHint || "通常是远端 viewer 依赖、端口或 conda 环境问题。主任务结果已经保存在任务输出中，可以先查看产物和日志。"}</p>
+          {session?.lastError && (
+            <details>
+              <summary>查看远端启动日志</summary>
+              <pre>{session.lastError}</pre>
+            </details>
+          )}
+        </div>
       )}
 
-      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+      <div className="viser-actions">
         {(status === "idle" || status === "stopped" || status === "failed") && (
           <button
             type="button"
@@ -142,13 +137,13 @@ export function ViserPanel({ jobId }: ViserPanelProps) {
             disabled={busy}
             onClick={handleStart}
           >
-            {busy ? "启动中…" : "启动 4D 可视化"}
+            {busy ? "启动中..." : "启动可选预览"}
           </button>
         )}
 
         {status === "starting" && (
           <button type="button" className="ghost-button small" disabled>
-            启动中（首次需加载远端 conda 环境，可能 30~60 秒）…
+            启动中（首次需加载远端 conda 环境，可能 30~60 秒）...
           </button>
         )}
 
@@ -182,7 +177,7 @@ export function ViserPanel({ jobId }: ViserPanelProps) {
       </div>
 
       {session && (status === "ready" || status === "starting") && (
-        <p className="dense-text" style={{ margin: "8px 0 0", fontSize: "11px", color: "var(--text-soft, #6b7280)" }}>
+        <p className="dense-text viser-session-meta">
           PID {session.pid} · 本地端口 {session.localPort} · 远端 {session.remoteDataDir}
         </p>
       )}
@@ -195,7 +190,7 @@ function ViserStatusPill({ status }: { status: ViserStatus }) {
     idle: { label: "未启动", bg: "#f3f4f6", color: "#6b7280" },
     starting: { label: "启动中", bg: "#fef3c7", color: "#92400e" },
     ready: { label: "就绪", bg: "#d1fae5", color: "#065f46" },
-    failed: { label: "失败", bg: "#fee2e2", color: "#991b1b" },
+    failed: { label: "预览不可用", bg: "#fee2e2", color: "#991b1b" },
     stopped: { label: "已停止", bg: "#e5e7eb", color: "#374151" },
   };
   const c = config[status] || config.idle;

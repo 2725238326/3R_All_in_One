@@ -30,6 +30,27 @@ interface QueueWorkspaceProps {
   batchActionBusy?: "dispatch" | "retry" | "cancel" | "delete" | null;
 }
 
+function stageProgressLabel(item: JobListItem) {
+  const stage = item.phase_display.stageProgress ?? item.phase_display.stage_progress ?? null;
+  if (!stage) return null;
+  const parts: string[] = [];
+  if (typeof stage.percent === "number") {
+    parts.push(`${Math.round(stage.percent)}%`);
+  }
+  if (stage.count) {
+    parts.push(`${stage.count.done}/${stage.count.total}`);
+  }
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function stageProgressPercent(item: JobListItem) {
+  const stage = item.phase_display.stageProgress ?? item.phase_display.stage_progress ?? null;
+  if (!stage) return null;
+  if (typeof stage.percent === "number") return Math.max(0, Math.min(100, stage.percent));
+  if (typeof stage.ratio === "number") return Math.max(0, Math.min(100, stage.ratio * 100));
+  return null;
+}
+
 export function QueueWorkspace({
   jobs,
   modelCatalog,
@@ -197,7 +218,10 @@ export function QueueWorkspace({
               <span className="queue-lane-count">{runningJobs.length}</span>
             </div>
             <div className="queue-lane-list">
-              {runningJobs.length > 0 ? runningJobs.map(item => (
+              {runningJobs.length > 0 ? runningJobs.map(item => {
+                const stageLabel = stageProgressLabel(item);
+                const stagePercent = stageProgressPercent(item);
+                return (
                 <div 
                   key={item.job.job_id} 
                   className={`queue-job-card running ${selectedJobId === item.job.job_id ? "selected" : ""}`}
@@ -205,7 +229,7 @@ export function QueueWorkspace({
                 >
                   <div className="queue-job-header">
                     <strong>{modelDisplayName(item.job.model, modelCatalog)}</strong>
-                    <span className="queue-job-progress">{item.phase_display.percent}%</span>
+                    <span className="queue-job-progress">总体 {item.phase_display.percent}%</span>
                   </div>
                   <div className="queue-job-meta">
                     <code>{item.job.job_id.slice(0, 8)}</code>
@@ -214,8 +238,25 @@ export function QueueWorkspace({
                   {item.job.progress_message && (
                     <div className="queue-job-live-msg">{item.job.progress_message}</div>
                   )}
-                  <div className="queue-job-progress-bar">
-                    <div className="queue-job-progress-fill" style={{ width: `${item.phase_display.percent}%` }} />
+                  <div className="queue-progress-group">
+                    <div className="queue-progress-row">
+                      <span>总体</span>
+                      <strong>{item.phase_display.percent}%</strong>
+                    </div>
+                    <div className="queue-job-progress-bar">
+                      <div className="queue-job-progress-fill" style={{ width: `${item.phase_display.percent}%` }} />
+                    </div>
+                    {stageLabel && stagePercent !== null && (
+                      <>
+                        <div className="queue-progress-row stage">
+                          <span>当前步骤</span>
+                          <strong>{stageLabel}</strong>
+                        </div>
+                        <div className="queue-job-progress-bar stage">
+                          <div className="queue-job-progress-fill stage" style={{ width: `${stagePercent}%` }} />
+                        </div>
+                      </>
+                    )}
                   </div>
                   <div className="queue-job-actions">
                     <button className="icon-btn" title="检视" onClick={(e) => { e.stopPropagation(); onInspectJob(item.job.job_id); }}>
@@ -228,7 +269,8 @@ export function QueueWorkspace({
                     )}
                   </div>
                 </div>
-              )) : (
+                );
+              }) : (
                 <div className="queue-lane-empty">无运行中任务</div>
               )}
             </div>

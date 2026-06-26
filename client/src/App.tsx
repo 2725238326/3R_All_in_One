@@ -117,6 +117,50 @@ function applyJobListItem(current: JobListItem[], next: JobListItem) {
   return updated;
 }
 
+const FALLBACK_ADVISOR_MODELS = ["gpt-4o-mini", "gpt-4.1-mini", "gemini-1.5-flash", "openrouter/auto"];
+
+function normalizeStructuredOutputMode(value: unknown): AdvisorConfig["structuredOutput"] {
+  if (value === true) return "json_schema";
+  if (value === false) return "prompt_only";
+  const mode = String(value || "auto");
+  return mode === "json_schema" || mode === "json_object" || mode === "prompt_only" ? mode : "auto";
+}
+
+function normalizeAdvisorConfig(config: Partial<AdvisorConfig> & Record<string, any>): AdvisorConfig {
+  const maxTokens = Number(config.maxTokens ?? config.max_tokens ?? 1200);
+  const timeoutSeconds = Number(config.timeoutSeconds ?? config.timeout_seconds ?? 90);
+  return {
+    enabled: Boolean(config.enabled),
+    provider: String(config.provider || "custom_openai_compatible"),
+    baseUrl: String(config.baseUrl ?? config.base_url ?? ""),
+    apiKey: "",
+    model: String(config.model || "gpt-4o-mini"),
+    temperature: Number(config.temperature ?? 0.2),
+    maxTokens: Number.isFinite(maxTokens) ? maxTokens : 1200,
+    systemPrompt: String(config.systemPrompt ?? config.system_prompt ?? ""),
+    structuredOutput: normalizeStructuredOutputMode(config.structuredOutput ?? config.structured_output),
+    timeoutSeconds: Number.isFinite(timeoutSeconds) ? timeoutSeconds : 90,
+    hasApiKey: Boolean(config.hasApiKey ?? config.has_api_key),
+  };
+}
+
+function advisorProviderKey(provider: AdvisorProvider) {
+  return String(provider.id ?? provider.value ?? provider.label ?? "custom_openai_compatible");
+}
+
+function advisorProviderBaseUrl(provider: AdvisorProvider) {
+  return String(provider.baseUrl ?? provider.base_url ?? "");
+}
+
+function advisorProviderStructuredOutput(provider: AdvisorProvider) {
+  return normalizeStructuredOutputMode(provider.structuredOutput ?? provider.structured_output ?? "auto");
+}
+
+function advisorModelOptions(providers: AdvisorProvider[], currentModel: string) {
+  const fromProviders = providers.flatMap((provider) => Array.isArray(provider.models) ? provider.models : []);
+  return Array.from(new Set([currentModel, ...fromProviders, ...FALLBACK_ADVISOR_MODELS].filter(Boolean)));
+}
+
 function App() {
   // Zustand store
   const {
@@ -533,6 +577,8 @@ function App() {
   }, [activeWorkspace, selectedJobId, createMode, compareSampleId]);
 
   async function openAdvisorSettings() {
+    setErrorMessage(null);
+    setAdvisorModalOpen(true);
     setAdvisorConfigLoading(true);
     try {
       const [config, providersPayload, diagnostics] = await Promise.all([
@@ -541,12 +587,11 @@ function App() {
         fetchJson<AdvisorDiagnostics>("/api/advisor/diagnostics")
       ]);
       const providers = Array.isArray(providersPayload) ? providersPayload : providersPayload.providers ?? [];
-      setAdvisorForm(config);
+      setAdvisorForm(normalizeAdvisorConfig(config));
       setAdvisorProviders(providers);
       setAdvisorDiagnostics(diagnostics);
-      setAdvisorModalOpen(true);
-    } catch (e) {
-      setErrorMessage("无法读取 Advisor 配置");
+    } catch (e: any) {
+      setErrorMessage(e?.message ? `无法读取 Advisor 配置：${e.message}` : "无法读取 Advisor 配置");
     } finally {
       setAdvisorConfigLoading(false);
     }
@@ -564,8 +609,8 @@ function App() {
       await refreshAppState();
       setAdvisorModalOpen(false);
       setInfoMessage("Advisor 配置已更新");
-    } catch (e) {
-      setErrorMessage("保存配置失败");
+    } catch (e: any) {
+      setErrorMessage(e?.message ? `保存配置失败：${e.message}` : "保存配置失败");
     } finally {
       setAdvisorConfigSaving(false);
     }
@@ -749,6 +794,8 @@ function App() {
       }
     }
   }
+
+  const advisorModelChoices = advisorModelOptions(advisorProviders, advisorForm.model);
 
   return (
     <div className="app-shell">
@@ -1073,6 +1120,7 @@ function App() {
               openAdvisorSettings={openAdvisorSettings}
               loadDeploymentStatus={loadDeploymentStatus}
               selectedJobId={selectedJobId}
+              onOpenWorkspace={handleWorkspaceChange}
               onRecommendParams={handleRecommendParams}
               onDiagnoseFailure={handleDiagnoseFailure}
             />
@@ -1096,10 +1144,77 @@ function App() {
               <button className="ghost-button small" onClick={() => setAdvisorModalOpen(false)}>关闭</button>
             </div>
             <form className="form-stack settings-form" onSubmit={saveAdvisorSettings}>
-              <label className="field"><span>启用</span><input type="checkbox" checked={advisorForm.enabled} onChange={e => setAdvisorForm({ enabled: e.target.checked })} /></label>
-              <label className="field"><span>Provider / Model</span><select value={advisorForm.model} onChange={e => setAdvisorForm({ model: e.target.value })}>{advisorProviders.length > 0 ? advisorProviders.map((p: any) => <optgroup key={p.id ?? p.value ?? p.label} label={p.label}>{(p.models ?? []).map((m: string) => <option key={m} value={m}>{m}</option>)}</optgroup>) : <option value={advisorForm.model}>{advisorForm.model || "gpt-4o-mini"}</option>}</select></label>
-              <label className="field"><span>Base URL</span><input value={advisorForm.baseUrl} onChange={e => setAdvisorForm({ baseUrl: e.target.value })} /></label>
-              <label className="field"><span>API Key</span><input type="password" value={advisorForm.apiKey} onChange={e => setAdvisorForm({ apiKey: e.target.value })} placeholder={advisorForm.hasApiKey ? "已保存" : "输入 Key"} /></label>
+              {advisorConfigLoading && (
+                <div className="settings-loading-note">正在读取配置，表单可先查看，加载完成后会自动填充。</div>
+              )}
+              <div className="advisor-settings-grid">
+                <label className="field toggle-field">
+                  <span>启用辅助评估</span>
+                  <input type="checkbox" checked={advisorForm.enabled} onChange={e => setAdvisorForm({ enabled: e.target.checked })} />
+                </label>
+                <label className="field">
+                  <span>Provider</span>
+                  <select
+                    value={advisorForm.provider || "custom_openai_compatible"}
+                    onChange={e => {
+                      const provider = advisorProviders.find((item) => advisorProviderKey(item) === e.target.value);
+                      setAdvisorForm({
+                        provider: e.target.value,
+                        ...(provider ? {
+                          baseUrl: advisorProviderBaseUrl(provider),
+                          structuredOutput: advisorProviderStructuredOutput(provider),
+                        } : {}),
+                      });
+                    }}
+                  >
+                    {advisorProviders.length > 0 ? advisorProviders.map((provider) => {
+                      const key = advisorProviderKey(provider);
+                      return <option key={key} value={key}>{provider.label || key}</option>;
+                    }) : <option value="custom_openai_compatible">Custom OpenAI-compatible</option>}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Model</span>
+                  <select value={advisorForm.model} onChange={e => setAdvisorForm({ model: e.target.value })}>
+                    {advisorModelChoices.map((model) => <option key={model} value={model}>{model}</option>)}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Base URL</span>
+                  <input value={advisorForm.baseUrl} onChange={e => setAdvisorForm({ baseUrl: e.target.value })} placeholder="https://.../v1" />
+                </label>
+                <label className="field">
+                  <span>输出模式</span>
+                  <select value={advisorForm.structuredOutput} onChange={e => setAdvisorForm({ structuredOutput: normalizeStructuredOutputMode(e.target.value) })}>
+                    <option value="auto">auto</option>
+                    <option value="json_schema">json_schema</option>
+                    <option value="json_object">json_object</option>
+                    <option value="prompt_only">prompt_only</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Timeout / Max Tokens</span>
+                  <div className="advisor-number-row">
+                    <input
+                      type="number"
+                      min={10}
+                      max={300}
+                      value={advisorForm.timeoutSeconds}
+                      onChange={e => setAdvisorForm({ timeoutSeconds: Number(e.target.value) || 90 })}
+                      title="请求超时秒数"
+                    />
+                    <input
+                      type="number"
+                      min={128}
+                      max={8192}
+                      value={advisorForm.maxTokens}
+                      onChange={e => setAdvisorForm({ maxTokens: Number(e.target.value) || 1200 })}
+                      title="最大输出 token"
+                    />
+                  </div>
+                </label>
+              </div>
+              <label className="field"><span>API Key</span><input type="password" value={advisorForm.apiKey} onChange={e => setAdvisorForm({ apiKey: e.target.value })} placeholder={advisorForm.hasApiKey ? "已保存，留空不覆盖" : "输入 Key"} /></label>
               {advisorDiagnostics?.checks?.length ? (
                 <div className="advisor-diagnostics-list">
                   {advisorDiagnostics.checks.slice(0, 4).map((check: any) => (
@@ -1107,7 +1222,7 @@ function App() {
                   ))}
                 </div>
               ) : null}
-              <div className="settings-modal-actions"><button className="primary-button" type="submit">保存</button></div>
+              <div className="settings-modal-actions"><button className="primary-button" type="submit" disabled={advisorConfigSaving}>{advisorConfigSaving ? "保存中..." : "保存"}</button></div>
             </form>
           </div>
         </div>

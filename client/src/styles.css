@@ -705,12 +705,13 @@ body {
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: 10px;
+  min-height: 42px;
+  padding: 9px 12px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 450;
+  font-size: 14px;
+  font-weight: 520;
   transition: background 0.1s, color 0.1s;
   background: transparent;
   border: none;
@@ -736,15 +737,15 @@ body {
 
 .nav-badge {
   margin-left: auto;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
   background: var(--bg-muted);
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 500;
-  line-height: 18px;
+  line-height: 22px;
   text-align: center;
 }
 
@@ -851,9 +852,9 @@ body {
 /* Split Pane for Inspect */
 .inspect-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-  gap: 1px;
-  background: var(--line-default);
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 12px;
+  background: transparent;
   height: 100%;
   overflow: hidden;
 }
@@ -862,9 +863,9 @@ body {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(360px, 1fr) minmax(300px, 0.92fr);
-  gap: 1px;
-  background: var(--line-default);
+  grid-template-rows: minmax(350px, 1fr) minmax(280px, 0.9fr);
+  gap: 12px;
+  background: transparent;
   overflow: hidden;
 }
 
@@ -872,8 +873,10 @@ body {
   min-width: 0;
   background: var(--bg-app);
   overflow-y: auto;
-  padding: 22px 24px;
+  padding: 18px 20px;
   overflow-wrap: anywhere;
+  border: 1px solid var(--line-default);
+  border-radius: 10px;
 }
 
 .inspect-pane.center {
@@ -898,7 +901,7 @@ body {
   min-height: 86px;
   padding: 10px;
   border: 1px solid var(--line-default);
-  border-radius: 10px;
+  border-radius: 8px;
   background: #f8fafc;
   min-width: 0;
 }
@@ -916,8 +919,8 @@ body {
 
 .analysis-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 12px;
   align-items: start;
 }
 
@@ -1013,13 +1016,125 @@ body {
   color: #15803d;
 }
 
+.settings-modal {
+  width: min(820px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 56px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.32);
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.settings-modal .preview-modal-head {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-default);
+  flex-shrink: 0;
+}
+
+.settings-loading-note {
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: var(--blue-soft);
+  color: #1d4ed8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.advisor-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 14px 16px;
+  align-items: start;
+}
+
+.settings-form .field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.settings-form .field > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-form .toggle-field {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-default);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+}
+
+.settings-form .toggle-field input {
+  width: auto;
+  min-width: 18px;
+}
+
+.advisor-number-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.settings-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+  flex-shrink: 0;
+}
+
 @media (max-width: 1320px) {
   .inspect-layout {
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+    grid-template-columns: minmax(240px, 290px) minmax(0, 1fr);
   }
 
   .analysis-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1180px) {
+  .inspect-layout {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .facts-pane {
+    max-height: none;
+  }
+
+  .inspect-main {
+    overflow: visible;
+    grid-template-rows: auto auto;
   }
 }
 
@@ -1032,6 +1147,10 @@ body {
   .inspect-main {
     overflow: visible;
     grid-template-rows: auto auto;
+  }
+
+  .advisor-settings-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -3843,9 +3962,10 @@ body {
 }
 
 .queue-job-progress {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--accent-primary);
+  white-space: nowrap;
 }
 
 .queue-job-meta {
@@ -3865,8 +3985,12 @@ body {
   height: 3px;
   background: var(--bg-muted);
   border-radius: 2px;
-  margin-top: 8px;
   overflow: hidden;
+}
+
+.queue-job-progress-bar.stage {
+  height: 4px;
+  background: rgba(20, 184, 166, 0.14);
 }
 
 .queue-job-progress-fill {
@@ -3874,6 +3998,37 @@ body {
   background: var(--accent-primary);
   border-radius: 2px;
   transition: width 0.3s;
+}
+
+.queue-job-progress-fill.stage {
+  background: #14b8a6;
+}
+
+.queue-progress-group {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.queue-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+
+.queue-progress-row strong {
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.queue-progress-row.stage strong {
+  color: #0f766e;
 }
 
 .queue-job-actions {
@@ -4678,6 +4833,67 @@ textarea,
   color: var(--accent-success);
 }
 
+.system-card-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.primary-button.compact {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.system-corner-tools {
+  padding: 0;
+  overflow: hidden;
+}
+
+.system-corner-tools summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.system-corner-tools summary::-webkit-details-marker {
+  display: none;
+}
+
+.system-corner-tools summary span {
+  display: grid;
+  gap: 3px;
+}
+
+.system-corner-tools summary small {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.system-corner-tools summary::after {
+  content: "展开";
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.system-corner-tools[open] summary::after {
+  content: "收起";
+}
+
+.system-corner-grid {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 16px 16px;
+}
+
 /* Deployment Table */
 .deployment-table {
   border: 1px solid var(--line-default);
@@ -4763,6 +4979,75 @@ textarea,
 .scheduler-job-item .job-priority.low { background: var(--bg-subtle); color: var(--text-secondary); }
 .retry-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--yellow-soft); color: var(--yellow-text); }
 .more-jobs { font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+
+.viser-panel {
+  border: 1px solid var(--line-default);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #ffffff;
+}
+
+.viser-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.viser-panel-head strong {
+  font-size: 13px;
+}
+
+.viser-panel-head p,
+.viser-session-meta {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.viser-note {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(194, 84, 102, 0.22);
+  border-radius: 8px;
+  background: #fff5f7;
+  color: var(--text-primary);
+}
+
+.viser-note p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.viser-note summary {
+  cursor: pointer;
+  color: var(--accent-danger);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.viser-note pre {
+  max-height: 120px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: #1f2937;
+  color: #e5e7eb;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.viser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
 /* ═══════════════════════════════════════════════════════════════ */
 /* PointCloud Viewer — 3D 点云查看器                                */
@@ -5370,7 +5655,7 @@ textarea,
 /* 运行中任务实时消息 */
 .queue-job-live-msg {
   font-size: 11px;
-  color: rgba(0, 255, 255, 0.8);
+  color: var(--text-secondary);
   padding: 2px 0;
   white-space: nowrap;
   overflow: hidden;
