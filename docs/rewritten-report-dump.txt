@@ -1,0 +1,113 @@
+  4 [毕业设计] 科研课堂课题设计(结题报告)
+  7 [Title] 面向前馈式三维重建模型的聚合管理平台设计与实现
+ 13 [Normal] 2026年6月
+ 15 [目录摘要] 目录
+ 16 [toc 1] 摘要	1
+ 17 [toc 1] 1 绪论	1
+ 18 [toc 2] 1.1 课题背景	1
+ 19 [toc 2] 1.2 研究现状与项目定位	2
+ 20 [toc 2] 1.3 研究内容与目标	2
+ 21 [toc 1] 2 相关理论与基础	3
+ 22 [toc 2] 2.1 三维重建流程基础	3
+ 23 [toc 2] 2.2 前馈式三维重建模型	3
+ 24 [toc 2] 2.3 软件平台基础	3
+ 25 [toc 2] 2.4 Dream3R 接入基础	4
+ 26 [toc 1] 3 系统设计与实现	4
+ 27 [toc 2] 3.1 总体设计	4
+ 28 [toc 2] 3.2 任务流程设计	4
+ 29 [toc 2] 3.3 模型接入方式	5
+ 30 [toc 2] 3.4 软件使用流程	5
+ 31 [toc 2] 3.5 Dream3R 接入实现	5
+ 32 [toc 1] 4 测试与结果分析	6
+ 33 [toc 2] 4.1 软件完成情况	6
+ 34 [toc 2] 4.2 模型接入结果	6
+ 35 [toc 2] 4.3 演示样本与验证结果	6
+ 36 [toc 2] 4.4 结果分析	7
+ 37 [toc 1] 5 总结	7
+ 38 [toc 1] 6 参考文献	8
+ 40 [目录摘要] 摘要
+ 41 [论文正文] 前馈式三维重建模型（DUSt3R、MASt3R、MonST3R 等）近年来发展迅速，但各模型的运行环境、输入格式和输出形式差异明显。在多模型实验场景下，任务创建、远端执行、结果回传和实验记录缺少统一管理手段，实验结果难以有效复现和横向比较。
+ 42 [论文正文] 本文设计并实现了 3R All-in-One 多模型三维重建实验管理平台。系统采用本地桌面端（React + Tauri 2）、本地 FastAPI 后端与远端 GPU 服务器三层架构，通过 SSH/SCP 调度远端模型推理，本地负责任务状态持久化、模型注册表维护与结果索引。平台主要功能包括：多模型注册与蓝图管理（DUSt3R、MASt3R、MonST3R、Spann3R、Fast3R、Align3R、CUT3R、Dream3R 共 8 个模型）、任务创建与参数配置、远端执行与日志回传、基于 scene_meta.json 与输出合同的产物校验、实验记录包生成以及 Agent 环境编排。其中 Dream3R v1.1 作为候选几何融合模型接入，支持 synthetic 演示模式与 proposal-cache 输入模式。
+ 43 [论文正文] 系统已通过 8/8 模型蓝图有效性校验、174 条后端与 Agent 单元测试，前端构建正常，并生成 Windows 稳定版安装包（v0.5.0）。演示实验选取 ETH3D delivery_area 场景的 12 张图像，验证了从任务提交到结果检查的完整流程。
+ 44 [论文正文] 关键词：三维重建；前馈式模型；实验管理平台；远端执行；Dream3R
+ 45 [Heading 1] 绪论
+ 46 [Heading 2] 课题背景
+ 47 [论文正文] 三维重建是计算机视觉中的核心问题之一，目标是从图像、视频或多视角观测中恢复场景的三维结构，在机器人导航、增强现实、数字内容制作和空间理解等领域有实际用途。传统方法通常包括特征匹配、相机位姿估计、稀疏重建和稠密匹配等步骤，以 COLMAP 为代表的工具链已较为成熟，但对图像质量、视角重叠和相机运动稳定性要求较高。
+ 48 [论文正文] 近年来，以 DUSt3R 为代表的前馈式三维重建模型快速发展。这类方法将部分传统几何步骤内化为网络前向推理，直接从输入图像预测点图或几何信息，降低了对相机标定和传统流水线的依赖。后续的 MASt3R、MonST3R、Spann3R、Fast3R、CUT3R 等工作分别在图像匹配、动态场景、多图输入和在线重建等方向进行了扩展。
+ 49 [论文正文] 这些模型丰富了三维重建的可选方法，但同时引入了工程管理层面的困难。各模型的仓库结构、conda 环境、权重路径、运行命令和输出格式互不相同，手工逐一运行和记录时容易出现输入混淆、日志丢失、输出目录难以追溯等问题。
+ 50 [Heading 2] 研究现状与项目定位
+ 51 [论文正文] 现有三维重建工具大致分为两类：一类是 COLMAP 等几何工具，流程完整但主要面向重建本身；另一类是各深度学习模型附带的推理脚本，便于复现论文示例，但缺少多模型在统一记录格式下的运行和对比能力。
+ 52 [论文正文] 本项目面向多模型实验管理需求，实现一个本地实验管理软件。要解决的核心问题包括：模型信息如何统一登记、任务如何创建和派发、远端运行如何调度和追踪、输出文件如何回传和校验，以及实验参数和结果如何持久保存以支持复现。
+ 53 [论文正文] 这一定位在结题展示上也有实际意义。相比单独展示效果图，能够创建任务、记录参数、回传结果和查看日志的完整软件，更能直观地说明项目完成了哪些工程工作。
+ 54 [Heading 2] 研究内容与目标
+ 55 [论文正文] 本项目的研究内容包括四个方面：（1）整理前馈式三维重建模型的输入输出规范，形成平台可读取的模型蓝图配置；（2）实现本地桌面软件与 FastAPI 后端，完成模型注册、任务创建和状态管理；（3）打通基于 SSH/SCP 的远端 GPU 运行流程，实现输入上传、命令执行、日志保存和结果回传；（4）接入 Dream3R v1.1 候选几何融合模型，并完成 Windows 稳定版打包。
+ 56 [论文正文] 项目目标是完成一个可运行、可验证、可继续扩展的平台原型。从开发过程看，系统经历了从 v0.1 单模型（DUSt3R）SSH 派发到 v0.5 多模型平台的逐步演进：v0.2 引入模型注册表和 AI 评估层，v0.3 完成六模型集成与样例矩阵，v0.4 补齐任务调度器和评估指标引擎，v0.5 加入对比可视化、参数模板和多服务器管理，结题阶段完成 Dream3R 接入与任务闭环（scene_meta 归一化和输出合同校验）。
+ 57 [Heading 1] 相关理论与基础
+ 58 [Heading 2] 三维重建流程基础
+ 59 [论文正文] 传统三维重建通常从多视图几何出发。SfM 方法通过特征匹配估计相机位姿和稀疏点云，MVS 方法在已知位姿基础上恢复稠密深度。这类方法的优点是几何约束清楚、结果可解释，但对弱纹理、重复纹理、运动模糊和宽基线图像较为敏感。
+ 60 [论文正文] 从实验管理的角度，一次三维重建实验不只包含最终点云或深度图，还涉及输入图像、模型版本、运行参数、相机信息、中间日志和结果索引。缺少这些记录时，即使有可视化产物，实验过程也难以复查。
+ 61 [Heading 2] 前馈式三维重建模型
+ 62 [论文正文] 前馈式三维重建模型将部分传统几何步骤内化为网络推理。DUSt3R 可在未标定图像条件下预测点图；MASt3R 强化了图像匹配与三维几何的联系；MonST3R 面向动态场景；Spann3R 和 CUT3R 关注序列状态管理；Fast3R 则针对多图输入效率进行优化。
+ 63 [论文正文] 这些模型的输入可能是图像对、多视图图像、视频片段或缓存文件，输出可能是点图、深度、mask、相机参数、可视化图片或 numpy 文件，平台层面无法强制统一。本项目采用统一任务记录、允许产物差异的策略，以 scene_meta.json 作为各模型结果的统一索引格式。
+ 64 [Heading 2] 软件平台基础
+ 65 [论文正文] 系统采用本地桌面端、本地后端与远端服务器三层结构。这一分层使本地软件无需承载复杂的模型运行环境，仅负责任务状态管理、结果索引和用户交互，实际推理在远端 GPU 服务器上完成。
+ 66 [论文正文] 任务运行过程中，平台记录的关键信息包括：任务所属模型标识、输入文件列表、运行参数、任务状态流转、远端日志内容以及输出目录中的必需产物列表。这些信息是后续复现和比较的基础。
+ 67 [Heading 2] Dream3R 接入基础
+ 68 [论文正文] Dream3R 在本项目中被定位为候选几何融合模型，其标准输入为 proposal-cache（由上游模型或缓存文件提供的候选几何结果），而非普通图片序列。为保证演示稳定性，平台同时保留 synthetic 模式，用于不依赖外部大文件的通路验证。
+ 69 [论文正文] 接入的重点在于让平台能够识别 Dream3R 的输入类型、参数、运行方式和输出产物，并将其纳入与其他模型一致的任务管理流程。当前版本输出的结果记录包括任务摘要、dream3r_report.json 和可选融合产物，可在任务详情页统一查看。
+ 70 [Heading 1] 系统设计与实现
+ 71 [Heading 2] 总体设计
+ 72 [论文正文] 系统采用本地负责管理、远端负责计算的总体设计。本地软件处理用户可见的部分——模型选择、任务创建、队列管理、结果检查和配置管理；本地后端维护任务状态、模型注册表和结果索引；远端服务器保存模型权重与运行环境，执行实际推理。
+ 73 [论文正文] 图 1　系统三层架构：桌面端 / 本地后端 / 远端 GPU 服务器（此处插入架构图）
+ 74 [Heading 2] 任务流程设计
+ 75 [论文正文] 任务创建时，平台根据选定模型的注册信息限制输入类型和参数范围：静态重建模型接收图像，动态模型接收视频或序列，Dream3R 支持 synthetic 模式或 proposal-cache 文件输入。任务提交后，后端将输入文件与运行配置上传至远端服务器，由对应 runner 启动模型执行。
+ 76 [论文正文] 任务运行期间，平台持续保存状态流转记录和远端日志。任务成功时，输出产物经输出合同校验后归入结果索引；任务失败时，失败阶段和错误信息同样保存入库，支持后续定位和重试。
+ 77 [论文正文] 图 2　任务生命周期状态流转（此处插入状态图）
+ 78 [论文正文] 图 3　工作队列页：任务状态、筛选与失败原因摘要（此处插入截图）
+ 79 [Heading 2] 模型接入方式
+ 80 [论文正文] 新模型的接入被拆分为四个稳定接口：（1）agent/model_specs/ 下的 YAML 蓝图，描述环境、权重、构建步骤和 smoke 测试；（2）backend/model_registry.py 中的模型条目，供前端选择和参数生成使用；（3）runners/<model>_runner.py，负责具体的推理命令封装；（4）backend/model_contracts.py 中的输出合同，定义必需产物的校验规则。
+ 81 [论文正文] 这一分层设计使新模型接入时不需要修改主业务逻辑，只需补充对应的蓝图、注册条目、runner 和输出合同。结题阶段的 8 个模型均通过此接口接入。
+ 82 [论文正文] 图 4　新模型接入的四个稳定接口（此处插入流程图）
+ 83 [Heading 2] 软件使用流程
+ 84 [论文正文] 用户的典型操作流程为：打开软件后查看工作队列中的任务状态，点击新建任务选择目标模型并配置参数，上传输入文件后提交任务，回到队列页面观察运行进度，任务完成后进入详情页查看产物列表、运行日志和合同校验结果。
+ 85 [论文正文] 图 5　新建任务页：模型选择与参数配置（此处插入截图）
+ 86 [论文正文] 图 6　任务详情页：产物列表、日志与输出合同校验分区（此处插入截图）
+ 87 [Heading 2] Dream3R 接入实现
+ 88 [论文正文] Dream3R v1.1 在平台中按候选几何融合流程接入。平台为其保留了 demo_mode（synthetic/cache）、domain、batch、views、patches、d_memory 和 device 等参数，并在任务创建页针对不同模式提供不同的输入入口：synthetic 模式直接触发内置演示；cache 模式需上传 .pt 或 .pth proposal-cache 文件。
+ 89 [论文正文] 任务完成后，Dream3R 的产物被整理为平台可识别的结果记录，包括任务摘要和 dream3r_report.json，并可在结果检查页统一查看。当前版本将其定位为演示通路接入：能够创建任务、调用 runner、回收结果、在软件中检查产物。
+ 90 [论文正文] 图 7　Dream3R 参数配置页（此处插入截图）
+ 91 [Heading 1] 测试与结果分析
+ 92 [Heading 2] 软件完成情况
+ 93 [论文正文] 桌面端已实现模型选择、任务创建、工作队列管理、结果检查和系统配置等功能；本地后端覆盖任务生命周期管理、模型注册、远端 SSH/SCP 调度和结果索引；远端服务器负责模型推理和产物生成。
+ 94 [论文正文] 调试阶段发现并修复了若干实现层面的问题。其中批量实验编排的 run_experiment_from_template 接口最初调用了不存在的 create_job(files=...) 方法，导致任务创建抛出 TypeError、输入从未保存、任务也从未实际派发；修复时改为按参数网格逐一创建任务，通过 save_inputs 保存输入并返回真实 job_id，批量编排才真正可用。辅助评估配置页曾因前后端字段命名不一致导致白屏，排查后统一字段命名修复。
+ 95 [Heading 2] 模型接入结果
+ 96 [论文正文] 平台已完成 8 个模型的注册与接入，各模型的接入状态如表 1 所示。不同模型的验证深度存在差异，均按实际完成情况如实记录，未做统一化处理。
+ 97 [论文正文] 表 1　各模型平台接入状态
+ 98 [Heading 2] 结果分析
+ 99 [Heading 2] 演示样本与验证结果
+100 [论文正文] 图 8　演示输入：ETH3D delivery_area 12 帧（此处插入 contact sheet）
+101 [论文正文] 图 9　一次完整任务的输出产物与运行日志（此处插入截图）
+102 [论文正文] · Agent 蓝图校验：8/8 valid
+103 [论文正文] · Python 后端与 Agent 测试：174 条通过（另有 1 条按设计跳过）
+104 [论文正文] · 前端构建：通过
+105 [论文正文] · 稳定版产物：3R All-in-One_0.5.0_x64-setup.exe
+106 [论文正文] 图 10　发布检查 release_check 终端输出（此处插入截图）
+107 [论文正文] 图 11　Windows 稳定版安装包（此处插入安装包截图）
+108 [论文正文] 演示实验选取 ETH3D delivery_area 场景中的 12 张代表帧。一次完整任务的流程为：在新建任务页选择模型并上传图像，后端将输入上传至远端服务器，runner 启动模型并写入日志，任务完成后本地同步产物目录，在任务详情页查看输出与日志。
+109 [论文正文] 从完成情况看，项目实现了预期的核心工程目标：模型信息统一登记在注册表和蓝图中，任务通过软件创建和派发，结果通过输出合同校验后归入结果索引，实验参数和日志持久保存支持追溯。以 ETH3D delivery_area 场景为演示样本，验证了从任务提交到结果检查的完整流程。定量指标方面，当前实现在有 ground truth 时可计算深度误差和点云密度指标，无 ground truth 时记录运行时间、完整性和日志；全面的定量比较依赖固定数据集，留作后续扩展。
+110 [Heading 1] 总结
+111 [论文正文] 本项目实现了一个面向前馈式三维重建模型的本地实验管理平台，完成了模型注册、任务创建、远端 SSH/SCP 执行、日志回传、产物校验、实验记录和桌面打包等工程环节，形成了可演示的完整软件闭环。
+112 [论文正文] 在模型接入方面，平台完成了 8 个代表性模型的注册与接入，其中包括 Dream3R v1.1 的 synthetic/cache 演示通路。在软件交付方面，系统通过了模型蓝图校验（8/8）、174 条单元测试，并生成了 v0.5.0 稳定版安装包。后续工作的重点在于补充固定样本对比实验、完善定量评估记录，并继续扩展模型覆盖范围。
+114 [Heading 1] 参考文献
+115 [参考文献] Schonberger J. L., Frahm J.-M. Structure-from-Motion Revisited[C]//Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR). 2016: 4104-4113.
+116 [参考文献] Schonberger J. L., Zheng E., Frahm J.-M., Pollefeys M. Pixelwise View Selection for Unstructured Multi-View Stereo[C]//European Conference on Computer Vision (ECCV). 2016: 501-518.
+117 [参考文献] Yao Y., Luo Z., Li S., Fang T., Quan L. MVSNet: Depth Inference for Unstructured Multi-view Stereo[C]//European Conference on Computer Vision (ECCV). 2018: 767-783.
+118 [参考文献] Mildenhall B., Srinivasan P. P., Tancik M., Barron J. T., Ramamoorthi R., Ng R. NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis[C]//European Conference on Computer Vision (ECCV). 2020: 405-421.
+119 [参考文献] Wang S., Leroy V., Cabon Y., Chidlovskii B., Revaud J. DUSt3R: Geometric 3D Vision Made Easy[C]//Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). 2024: 20697-20709.
+120 [参考文献] Leroy V., Cabon Y., Revaud J. Grounding Image Matching in 3D with MASt3R[C]//European Conference on Computer Vision (ECCV). 2024.
+121 [参考文献] Zhang J., Herrmann C., Hur J., Jampani V., Darrell T., Cole F., Sun D., Yang M.-H. MonST3R: A Simple Approach for Estimating Geometry in the Presence of Motion[C]//International Conference on Learning Representations (ICLR). 2025.
+122 [参考文献] Yang J., Sax A., Liang K. J., Henaff M., Tang H., Cao A., Chai J., Meier F., Feiszli M. Fast3R: Towards 3D Reconstruction of 1000+ Images in One Forward Pass[C]//Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). 2025: 21924-21935.
+123 [参考文献] Lu J., Huang T., Li P., Dou Z., Lin C., Cui Z., Dong Z., Yeung S.-K., Wang W., Liu Y. Align3R: Aligned Monocular Depth Estimation for Dynamic Videos[C]//Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). 2025: 22820-22830.
+124 [参考文献] Wang H., et al. Spann3R: Efficient Generalizable 3D Reconstruction via Spatial Memory[C]//arXiv preprint. 2024.
+125 [参考文献] Wang Q., et al. CUT3R: Continuous Updating and Tracking for 3D Reconstruction[C]//arXiv preprint. 2025.
+126 [参考文献] ETH3D Dataset. ETH3D Low-Res Many-View Dataset[EB/OL]. https://www.eth3d.net/.
