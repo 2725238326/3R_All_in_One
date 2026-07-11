@@ -1,24 +1,20 @@
-import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "./store/appStore";
 import type {
   AdvisorConfig,
   AdvisorDiagnostics,
   AdvisorProvider,
-  AdvisorStatus,
   AppState,
   BackendStatusPayload,
   BatchCompareResponse,
   BatchJobsResponse,
   ComparePacket,
   DeploymentStatusPayload,
-  DevelopmentLaneItem,
-  EvaluationPayload,
   InspectionPacket,
   JobPayload,
   JobsListPayload,
   ModelContract,
-  ResultContract,
   SamplesPayload,
   ValidationCreateResponse
 } from "./types";
@@ -27,57 +23,22 @@ import { uploadWithProgress } from "./uploadProgress";
 import type { UploadProgress } from "./uploadProgress";
 import {
   backendStatusText,
-  delay,
-  formatDateTime,
-  formatParamLabel,
   friendlyError,
   modelDisplayName,
-  runnerStatusLabel,
-  serviceStatusLabel,
-  sourceTypeLabel,
-  statusLabel,
-  statusModelLabel
+  serviceStatusLabel
 } from "./displayHelpers";
-import type { ModelCatalogItem } from "./displayHelpers";
-import {
-  buildDeploymentComponentRows,
-  buildModelActionRows,
-  formatDeploymentCacheStatus,
-  formatDeploymentDirectoryStatus,
-  formatDeploymentEnvSummary
-} from "./deploymentHelpers";
+import { buildDeploymentComponentRows } from "./deploymentHelpers";
 import {
   formatFileSize,
   isImageLikeFile,
-  isVideoLikeFile,
-  pendingFileRoleLabel
+  isVideoLikeFile
 } from "./fileHelpers";
-import {
-  batchActionLabel,
-  buildActionMessage,
-  buildAdvisorChecklist,
-  buildCaptureChecklist,
-  buildSystemChecklist,
-  canDispatchJobStatus,
-  isAdvisorSuggested,
-  matchesJobQuery
-} from "./workflowHelpers";
+import { buildActionMessage } from "./workflowHelpers";
 import type { BatchJobAction, JobListItem } from "./workflowHelpers";
 import { ResourceMonitor } from "./ResourceMonitor";
-import {
-  MessageBanner,
-  ModelSemanticChips,
-  PanelTitle,
-  StatusBadge,
-  SummaryStat,
-  MiniStat
-} from "./uiPrimitives";
-import { ModelRoadmapPanel } from "./ModelRoadmapPanel";
+import { MessageBanner } from "./uiPrimitives";
 import { SampleMatrixPanel } from "./SampleMatrixPanel";
-import { AdvisorWorkbench } from "./AdvisorWorkbench";
-import { JobDetail } from "./JobDetail";
 import type { PreviewAsset } from "./JobDetail";
-import { currentStepLabel } from "./jobInspectorHelpers";
 import { DevelopmentCyclePanel } from "./DevelopmentCyclePanel";
 import { ResearchAccelerationPanel } from "./ResearchAccelerationPanel";
 import { DynamicParamForm } from "./DynamicParamForm";
@@ -85,7 +46,7 @@ import { Sidebar } from "./Sidebar";
 import { CommandBar } from "./CommandBar";
 import { QueueWorkspace } from "./QueueWorkspace";
 import { InspectWorkspace } from "./InspectWorkspace";
-import { CompareBoard, CompareBoardInline } from "./CompareBoard";
+import { CompareBoard } from "./CompareBoard";
 import { filterRunnableModels, modelCompatibilityHint } from "./compareHelpers";
 import { PointCloudViewer } from "./PointCloudViewer";
 import { StoragePanel } from "./StoragePanel";
@@ -176,7 +137,6 @@ function App() {
     // UI 状态
     activeWorkspace,
     submitting,
-    actionKey,
     batchActionKey,
     batchSubmitting,
     errorMessage,
@@ -189,13 +149,11 @@ function App() {
     files,
     createMode,
     selectedModels,
-    batchAutoDispatch,
     // 数据面板
     samplesPayload,
     samplesError,
     developmentLanes,
     deploymentStatus,
-    deploymentError,
     // 对比面板
     compareSampleId,
     comparePacket,
@@ -219,7 +177,6 @@ function App() {
     setBackendStatus,
     setAppState,
     setJobs,
-    updateJobInList,
     setSelectedJobId,
     setSelectedInspection,
     setActiveWorkspace,
@@ -233,16 +190,11 @@ function App() {
     setUploadProgress,
     setSavingEvaluation,
     setFormState,
-    resetFormState,
     setFiles,
-    addFiles,
-    clearFiles,
     setCreateMode,
     setSelectedModels,
     toggleModelSelection,
-    setBatchAutoDispatch,
     setSamplesPayload,
-    setSamplesError,
     setDevelopmentLanes,
     setDeploymentStatus,
     setCompareSampleId,
@@ -278,11 +230,9 @@ function App() {
     message: "辅助评估尚未配置。"
   }, [appState]);
 
-  const serviceReady = serviceState === "ready";
   const advisorReady = advisorState.enabled && advisorState.configured;
 
   const runnableModelCatalog = useMemo(() => modelCatalog.filter((item) => item.runnable), [modelCatalog]);
-  const catalogOnlyModelCatalog = useMemo(() => modelCatalog.filter((item) => !item.runnable), [modelCatalog]);
 
   const selectedModelCatalog = useMemo(() => modelCatalog.find((item) => item.value === formState.model) ?? null, [formState.model, modelCatalog]);
   const selectedModelContract = useMemo(() => modelContracts[formState.model] ?? null, [formState.model, modelContracts]);
@@ -299,7 +249,6 @@ function App() {
 
   const pendingImageCount = useMemo(() => files.filter((file) => isImageLikeFile(file)).length, [files]);
   const pendingVideoCount = useMemo(() => files.filter((file) => isVideoLikeFile(file)).length, [files]);
-  const pendingTotalSize = useMemo(() => files.reduce((total, file) => total + file.size, 0), [files]);
   const pendingTypeSummary = useMemo(() => [
     pendingImageCount > 0 ? `图片 ${pendingImageCount}` : null,
     pendingVideoCount > 0 ? `视频 ${pendingVideoCount}` : null,

@@ -32,7 +32,7 @@ import type {
 } from "./sampleMatrixHelpers";
 import { downloadTextFile } from "./fileHelpers";
 import { buildMatrixModelConstraint } from "./workflowHelpers";
-import { ModelSemanticChips, SummaryStat } from "./uiPrimitives";
+import { ModelSemanticChips } from "./uiPrimitives";
 
 export function SampleMatrixPanel(props: {
   samplesPayload: SamplesPayload | null;

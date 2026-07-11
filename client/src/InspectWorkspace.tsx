@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { InspectionPacket, AdvisorStatus, EvaluationPayload, ResultArtifact } from "./types";
+import type { InspectionPacket, AdvisorStatus, EvaluationPayload } from "./types";
 import { formatDateTime, modelDisplayName, sourceTypeLabel, statusLabel } from "./displayHelpers";
 import { StatusBadge, ModelSemanticChips, MiniStat, PanelTitle } from "./uiPrimitives";
-import { SummaryPanel } from "./SummaryPanel";
 import { EvaluationPanel } from "./EvaluationPanel";
 import { AdvisorPanel } from "./AdvisorWorkbench";
 import { HighlightedLogTail } from "./jobInspectorHelpers";

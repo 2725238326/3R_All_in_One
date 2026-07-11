@@ -1,4 +1,4 @@
-import type { CompareModelCell, ComparePacket, CompareSummary, CompareVisual } from "./types";
+import type { CompareModelCell, CompareSummary, CompareVisual } from "./types";
 import type { ModelCatalogItem } from "./displayHelpers";
 
 export type CompareCellTone = "ready" | "running" | "attention" | "missing" | "neutral";
