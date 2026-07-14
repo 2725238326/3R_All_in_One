@@ -29,6 +29,7 @@ from advisor import (
     advisor_config_public,
     advisor_diagnostics,
     advisor_provider_options,
+    fetch_advisor_models,
     advisor_status,
     evaluate_job_with_advisor,
     recommend_parameters,
@@ -1402,8 +1403,25 @@ def _validate_dream3r_job_params(model: str, raw_params: dict, files: list[Uploa
     if model != "dream3r":
         return
     demo_mode = str(raw_params.get("demo_mode") or "synthetic").strip().lower()
-    if demo_mode != "cache":
+    if demo_mode == "synthetic":
+        if files:
+            raise HTTPException(status_code=400, detail="Dream3R synthetic 模式由程序生成输入，不需要上传文件。")
         return
+    cache_source = str(raw_params.get("cache_source") or "server:kitti").strip()
+    if cache_source.startswith("server:") or cache_source.startswith("job:"):
+        if files:
+            raise HTTPException(status_code=400, detail="已选择平台缓存来源，不需要再上传文件。")
+        return
+    invalid_files = [
+        upload.filename or "unnamed"
+        for upload in files
+        if Path(upload.filename or "").suffix.lower() not in {".pt", ".pth"}
+    ]
+    if invalid_files:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dream3R cache 模式仅支持 .pt/.pth proposal-cache 文件：{', '.join(invalid_files[:3])}",
+        )
     cache_files = [
         upload
         for upload in files
@@ -1411,6 +1429,60 @@ def _validate_dream3r_job_params(model: str, raw_params: dict, files: list[Uploa
     ]
     if not cache_files:
         raise HTTPException(status_code=400, detail="Dream3R cache 模式需要上传至少一个 .pt/.pth proposal-cache 文件。")
+    if len(cache_files) > 1:
+        raise HTTPException(status_code=400, detail="Dream3R 每次运行只能使用一个 proposal cache，请只选择一个 .pt/.pth 文件。")
+
+
+def _dream3r_history_cache_uploads(cache_source: str, cache_file: str = "") -> list[tuple[str, bytes]]:
+    if not cache_source.startswith("job:"):
+        return []
+    source_job_id = cache_source.removeprefix("job:").strip()
+    try:
+        source_job = load_job(source_job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=f"找不到缓存来源任务：{source_job_id}") from exc
+    candidates = list(source_job.input_files) + list(source_job.output_files)
+    cache_candidates: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+    for relative_path in candidates:
+        normalized = str(relative_path).replace("\\", "/")
+        path = ROOT / relative_path
+        if normalized not in seen and path.suffix.lower() in {".pt", ".pth"} and path.is_file():
+            seen.add(normalized)
+            cache_candidates.append((normalized, path))
+    if not cache_candidates:
+        raise HTTPException(status_code=400, detail=f"任务 {source_job_id} 没有可复用的 .pt/.pth proposal cache。")
+    selected = str(cache_file or "").replace("\\", "/").strip()
+    if not selected and len(cache_candidates) > 1:
+        raise HTTPException(status_code=400, detail=f"任务 {source_job_id} 包含多个 proposal cache，请明确选择其中一个文件。")
+    if selected:
+        matches = [(relative_path, path) for relative_path, path in cache_candidates if relative_path == selected]
+        if not matches:
+            raise HTTPException(status_code=400, detail=f"任务 {source_job_id} 中找不到所选缓存文件：{cache_file}")
+        cache_candidates = matches
+    path = cache_candidates[0][1]
+    return [(path.name, path.read_bytes())]
+
+
+def _resolve_dream3r_history_cache_source(model: str, raw_params: dict) -> None:
+    if model != "dream3r":
+        return
+    cache_source = str(raw_params.get("cache_source") or "")
+    if not cache_source.startswith("job:"):
+        return
+    source_job_id = cache_source.removeprefix("job:").strip()
+    try:
+        source_job = load_job(source_job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=f"找不到缓存来源任务：{source_job_id}") from exc
+    inherited_source = str((source_job.params or {}).get("cache_source") or "")
+    source_domain = str((source_job.params or {}).get("domain") or "").strip().lower()
+    raw_params["source_job_id"] = source_job_id
+    if source_domain in {"kitti", "eth3d"}:
+        raw_params["domain"] = source_domain
+    if source_job.model == "dream3r" and inherited_source.startswith("server:"):
+        raw_params["cache_source"] = inherited_source
+        raw_params["cache_file"] = ""
 
 
 def _validate_dispatchable(job) -> None:
@@ -1566,8 +1638,14 @@ async def _create_job_from_request(
         window_size=window_size,
         window_overlap_ratio=window_overlap_ratio,
     )
+    _resolve_dream3r_history_cache_source(model, raw_params)
     _validate_dream3r_job_params(model, raw_params, files)
     uploaded = await _uploaded_files_to_bytes(files)
+    if model == "dream3r":
+        uploaded.extend(_dream3r_history_cache_uploads(
+            str(raw_params.get("cache_source") or ""),
+            str(raw_params.get("cache_file") or ""),
+        ))
     return _create_job_from_uploaded_bytes(
         model=model,
         source_type=source_type,
@@ -1893,7 +1971,7 @@ async def create_job_view(
     lr: float = Form(0.01),
     batch_size: int = Form(1),
     max_points: int = Form(250000),
-    match_viz_count: int = Form(50),
+    match_viz_count: int = Form(30),
     fps: int = Form(0),
     num_frames: int = Form(24),
     not_batchify: str = Form("true"),
@@ -2939,7 +3017,7 @@ async def create_job_api(
     lr: float = Form(0.01),
     batch_size: int = Form(1),
     max_points: int = Form(250000),
-    match_viz_count: int = Form(50),
+    match_viz_count: int = Form(30),
     fps: int = Form(0),
     num_frames: int = Form(24),
     not_batchify: str = Form("true"),
@@ -2989,7 +3067,7 @@ async def create_compare_batch_api(
     lr: float = Form(0.01),
     batch_size: int = Form(1),
     max_points: int = Form(250000),
-    match_viz_count: int = Form(50),
+    match_viz_count: int = Form(30),
     fps: int = Form(0),
     num_frames: int = Form(24),
     not_batchify: str = Form("true"),
@@ -3087,6 +3165,15 @@ async def advisor_status_api():
 @app.get("/api/advisor/providers")
 async def advisor_providers_api():
     return JSONResponse(advisor_provider_options())
+
+
+@app.post("/api/advisor/models")
+async def advisor_models_api(request: Request):
+    payload = await _read_optional_json_body(request)
+    try:
+        return JSONResponse(fetch_advisor_models(payload))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/advisor/diagnostics")

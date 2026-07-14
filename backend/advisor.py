@@ -278,6 +278,61 @@ def advisor_provider_options() -> dict[str, Any]:
     }
 
 
+def fetch_advisor_models(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = payload or {}
+    saved = load_advisor_config()
+    base_url = str(payload.get("base_url", payload.get("baseUrl")) or saved.get("base_url") or "").strip()
+    api_key = str(payload.get("api_key", payload.get("apiKey")) or saved.get("api_key") or "").strip()
+    timeout_seconds = min(max(int(payload.get("timeout_seconds", payload.get("timeoutSeconds")) or 30), 5), 60)
+    if not base_url:
+        raise RuntimeError("请先填写 Base URL。")
+    if not api_key:
+        raise RuntimeError("请先填写 API Key，或保存已有 Key。")
+
+    models_url = base_url.rstrip("/")
+    if not models_url.endswith("/models"):
+        models_url += "/models"
+    request = Request(
+        models_url,
+        headers={"Accept": "application/json", "Authorization": f"Bearer {api_key}"},
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            body = response.read().decode("utf-8", errors="replace")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        raise RuntimeError(f"获取模型列表失败：HTTP {exc.code}。{detail[:300]}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"获取模型列表失败：{exc.reason}") from exc
+
+    try:
+        response_payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("模型接口返回的不是有效 JSON。") from exc
+
+    raw_models = response_payload.get("data") if isinstance(response_payload, dict) else None
+    if not isinstance(raw_models, list) and isinstance(response_payload, dict):
+        raw_models = response_payload.get("models")
+    if not isinstance(raw_models, list):
+        raise RuntimeError("模型接口响应中缺少 data/models 数组。")
+
+    models: list[str] = []
+    seen: set[str] = set()
+    for item in raw_models:
+        if isinstance(item, str):
+            model_id = item.strip()
+        elif isinstance(item, dict):
+            model_id = str(item.get("id") or item.get("name") or "").strip()
+        else:
+            model_id = ""
+        if model_id and model_id not in seen:
+            seen.add(model_id)
+            models.append(model_id)
+    models.sort(key=str.casefold)
+    return {"models": models, "count": len(models), "endpoint": models_url}
+
+
 def advisor_diagnostics() -> dict[str, Any]:
     config = load_advisor_config()
     status = advisor_status()

@@ -92,7 +92,7 @@ PARAM_SCHEMAS: dict[str, dict] = {
             _field("lr", "Learning Rate", "number", 0.01, minimum=0),
             _field("batch_size", "Batch Size", "number", 1, minimum=1, maximum=8),
             _field("max_points", "Max Points", "number", 250000, minimum=1000, maximum=2_000_000),
-            _field("match_viz_count", "Match Viz Count", "number", 50, minimum=0, maximum=500),
+            _field("match_viz_count", "匹配线数量", "number", 30, minimum=0, maximum=200, help_text="仅影响前两张图的匹配预览；30 条更适合查看和录屏。"),
         ],
     },
     "video_sequence": {
@@ -161,6 +161,18 @@ PARAM_SCHEMAS: dict[str, dict] = {
                     {"value": "kitti", "label": "KITTI"},
                     {"value": "eth3d", "label": "ETH3D"},
                 ],
+            ),
+            _field(
+                "cache_source",
+                "Cache 来源",
+                "select",
+                "server:kitti",
+                choices=[
+                    {"value": "server:kitti", "label": "服务器内置 KITTI cache"},
+                    {"value": "server:eth3d", "label": "服务器内置 ETH3D cache"},
+                    {"value": "upload", "label": "从本机上传 .pt/.pth"},
+                ],
+                help_text="cache 模式可直接使用服务器内置缓存，或复用平台历史任务中的缓存。",
             ),
             _field("max_entries", "Max Cache Entries", "number", 1, minimum=1, maximum=50),
             _field("seed", "Synthetic Seed", "number", 7, minimum=0, maximum=1_000_000),
@@ -346,7 +358,7 @@ def build_job_params(model: str, raw_params: dict[str, Any] | None = None) -> di
             "lr": _float_param(raw_params, "lr", 0.01, 0.0),
             "batch_size": _int_param(raw_params, "batch_size", 1, 1, 8),
             "max_points": _int_param(raw_params, "max_points", 250000, 1000, 2_000_000),
-            "match_viz_count": _int_param(raw_params, "match_viz_count", 50, 0, 500),
+            "match_viz_count": _int_param(raw_params, "match_viz_count", 30, 0, 200),
         }
     if family == "video_sequence":
         return {
@@ -395,6 +407,9 @@ def build_job_params(model: str, raw_params: dict[str, Any] | None = None) -> di
         return {
             "demo_mode": demo_mode,
             "domain": domain,
+            "cache_source": str(raw_params.get("cache_source") or "server:kitti").strip(),
+            "cache_file": str(raw_params.get("cache_file") or "").strip(),
+            "source_job_id": str(raw_params.get("source_job_id") or "").strip(),
             "max_entries": _int_param(raw_params, "max_entries", 1, 1, 50),
             "seed": _int_param(raw_params, "seed", 7, 0, 1_000_000),
             "batch": _int_param(raw_params, "batch", 2, 1, 16),

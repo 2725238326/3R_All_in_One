@@ -92,6 +92,8 @@ def run_pair(args: argparse.Namespace, images: list[Path], job_dir: Path) -> Non
     imgs_array = scene.imgs
     match_path = output_dir / "matches.png"
     saved_match_lines = False
+    match_total = 0
+    match_shown = 0
 
     if len(imgs_array) >= 2 and args.match_viz_count > 0:
         try:
@@ -116,6 +118,8 @@ def run_pair(args: argparse.Namespace, images: list[Path], job_dir: Path) -> Non
 
             reciprocal_in_p2, nn2_in_p1, num_matches = find_reciprocal_matches(*pts3d_list)
             n_viz = min(args.match_viz_count, int(num_matches))
+            match_total = int(num_matches)
+            match_shown = n_viz
 
             if n_viz > 0:
                 matches_im1 = pts2d_list[1][reciprocal_in_p2]
@@ -129,17 +133,24 @@ def run_pair(args: argparse.Namespace, images: list[Path], job_dir: Path) -> Non
                 img1 = np.pad(imgs_array[1], ((0, max(h0 - h1, 0)), (0, 0), (0, 0)), "constant")
                 canvas = np.concatenate((img0, img1), axis=1)
 
-                fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+                canvas_ratio = canvas.shape[1] / max(canvas.shape[0], 1)
+                fig, ax = plt.subplots(1, 1, figsize=(14, max(4.5, 14 / canvas_ratio)))
                 ax.imshow(canvas)
                 ax.axis("off")
-                ax.set_title(f"前两张图匹配：展示 {n_viz}/{num_matches} 条")
-                cmap = plt.get_cmap("jet")
+                ax.set_title(f"MASt3R feature correspondences | shown {n_viz} of {num_matches}", fontsize=12, pad=10)
+                ax.axvline(w0 - 0.5, color="white", linewidth=1.2, alpha=0.9)
+                label_box = {"facecolor": "black", "alpha": 0.65, "edgecolor": "none", "pad": 3}
+                ax.text(10, 22, "View 1", color="white", fontsize=10, bbox=label_box)
+                ax.text(w0 + 10, 22, "View 2", color="white", fontsize=10, bbox=label_box)
+                cmap = plt.get_cmap("turbo")
                 for line_idx in range(n_viz):
                     (x0, y0), (x1, y1) = viz_matches_im0[line_idx].T, viz_matches_im1[line_idx].T
-                    ax.plot([x0, x1 + w0], [y0, y1], "-+", color=cmap(line_idx / max(n_viz - 1, 1)), scalex=False, scaley=False)
+                    color = cmap(line_idx / max(n_viz - 1, 1))
+                    ax.plot([x0, x1 + w0], [y0, y1], "-", color=color, linewidth=0.9, alpha=0.72, scalex=False, scaley=False)
+                    ax.scatter([x0, x1 + w0], [y0, y1], s=9, color=[color], edgecolors="white", linewidths=0.25)
 
-                plt.tight_layout()
-                plt.savefig(str(match_path), dpi=150, bbox_inches="tight")
+                fig.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.90)
+                plt.savefig(str(match_path), dpi=150, bbox_inches="tight", pad_inches=0.08, facecolor="white")
                 plt.close()
                 saved_match_lines = True
                 print(f"[mast3r_runner] 匹配图已绘制 {n_viz}/{num_matches} 条匹配线。")
@@ -152,7 +163,7 @@ def run_pair(args: argparse.Namespace, images: list[Path], job_dir: Path) -> Non
             axes = [axes]
         for i, img in enumerate(imgs_array):
             axes[i].imshow(img)
-            axes[i].set_title(f"视图 {i + 1}")
+            axes[i].set_title(f"View {i + 1}")
             axes[i].axis("off")
         plt.tight_layout()
         plt.savefig(str(match_path), dpi=150, bbox_inches="tight")
@@ -221,6 +232,7 @@ def run_pair(args: argparse.Namespace, images: list[Path], job_dir: Path) -> Non
             "n_pairs": len(pairs),
             "n_points": len(all_pts),
             "raw_point_count": raw_point_count,
+            "match_visualization": {"shown": match_shown, "total": match_total},
             "image_files": [p.name for p in images],
             "params": {
                 "image_size": args.image_size,
@@ -253,7 +265,7 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=0.01, help="Global alignment learning rate")
     parser.add_argument("--batch-size", type=int, default=1, help="Pair inference batch size")
     parser.add_argument("--max-points", type=int, default=250000, help="Maximum exported PLY points after downsampling")
-    parser.add_argument("--match-viz-count", type=int, default=50, help="Number of reciprocal match lines to draw for the first image pair")
+    parser.add_argument("--match-viz-count", type=int, default=30, help="Number of reciprocal match lines to draw for the first image pair")
     args = parser.parse_args()
 
     job_dir = Path(args.job_dir)

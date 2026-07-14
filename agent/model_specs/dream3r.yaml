@@ -53,17 +53,17 @@ resources:
 health_checks:
   - name: dream3r_release_import
     type: import
-    command: "PYTHONPATH=/hdd3/kykt26/code/dream3r/code python -c \"from dream3r.release_v11 import build_dream3r_v11_release; print('IMPORT_OK')\""
+    command: "PYTHONPATH=/hdd3/kykt26/code/dream3r python -c \"from dream3r.release_v11 import build_dream3r_v11_release; print('IMPORT_OK')\""
     expected: "IMPORT_OK"
     critical: true
   - name: official_version
     type: command
-    command: "PYTHONPATH=/hdd3/kykt26/code/dream3r/code python -c \"from dream3r.release_v11 import RELEASE_V11_VERSION; print(RELEASE_V11_VERSION)\""
+    command: "PYTHONPATH=/hdd3/kykt26/code/dream3r python -c \"from dream3r.release_v11 import RELEASE_V11_VERSION; print(RELEASE_V11_VERSION)\""
     expected: "v1.1.0"
     critical: true
 
 smoke_test:
-  script: "PYTHONPATH=/hdd3/kykt26/code/dream3r/code python /hdd3/kykt26/code/dream3r/code/dream3r/scripts/run_dream3r_v11_demo.py --domain kitti --output /tmp/dream3r_smoke.json"
+  script: "PYTHONPATH=/hdd3/kykt26/code/dream3r python /hdd3/kykt26/code/dream3r/dream3r/scripts/run_dream3r_v11_demo.py --domain kitti --output /tmp/dream3r_smoke.json"
   timeout_sec: 120
   expected: "\"status\": \"pass\""
   output_files: [/tmp/dream3r_smoke.json]
@@ -74,6 +74,7 @@ runner:
   entry_pattern: dream3r_runner.py
   default_params:
     demo_mode: synthetic
+    cache_source: server:kitti
     domain: kitti
     max_entries: 1
     seed: 7
@@ -139,7 +140,7 @@ output_contract:
 known_issues:
   - id: dream3r-001
     description: "Dream3R v1.1 正式版是候选几何融合模型，不是 image-only 重建模型。"
-    workaround: "先由 3R_All_in_One 生成或上传 proposal-cache，再调用 Dream3R 融合；synthetic 模式只用于通路演示。"
+    workaround: "选择平台内置的同场景多专家 proposal-cache，或上传符合 Dream3R 结构的缓存包；普通 3R 任务产物不能直接替代。synthetic 模式只用于通路演示。"
     resolved: false
     resolved_date: ""
 

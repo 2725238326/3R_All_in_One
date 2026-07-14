@@ -8,6 +8,19 @@ import time
 from pathlib import Path
 
 
+def configure_dream3r_import_path(repo: Path) -> Path:
+    """Add the directory containing the ``dream3r`` package to sys.path."""
+    candidates = (repo, repo / "code", repo / "src")
+    for candidate in candidates:
+        if (candidate / "dream3r" / "__init__.py").is_file():
+            candidate_text = str(candidate)
+            if candidate_text not in sys.path:
+                sys.path.insert(0, candidate_text)
+            return candidate
+    checked = ", ".join(str(path / "dream3r" / "__init__.py") for path in candidates)
+    raise RuntimeError(f"Dream3R Python 包未找到。已检查：{checked}")
+
+
 def write_status(job_dir: Path, phase: str, message: str, progress: str = "") -> None:
     payload = {
         "phase": phase,
@@ -127,7 +140,7 @@ def scene_meta_from_report(report: dict, args: argparse.Namespace, output_dir: P
 
 
 def run_synthetic(args: argparse.Namespace, job_dir: Path, output_dir: Path) -> dict:
-    sys.path.insert(0, str(Path(args.repo) / "code"))
+    configure_dream3r_import_path(Path(args.repo))
     from dream3r.scripts.run_dream3r_v11_demo import run_demo
 
     report_path = output_dir / "dream3r_report.json"
@@ -145,11 +158,11 @@ def run_synthetic(args: argparse.Namespace, job_dir: Path, output_dir: Path) -> 
 
 
 def run_cache(args: argparse.Namespace, input_dir: Path, output_dir: Path) -> tuple[dict, list[Path]]:
-    cache_files = find_cache_files(input_dir)
+    cache_files = [Path(args.cache_path)] if args.cache_path else find_cache_files(input_dir)
     if not cache_files:
         raise RuntimeError("Dream3R cache 模式需要上传至少一个 .pt/.pth proposal-cache 文件。")
 
-    sys.path.insert(0, str(Path(args.repo) / "code"))
+    configure_dream3r_import_path(Path(args.repo))
     from dream3r.scripts.run_dream3r_v11_cache_demo import run_cache_demo
 
     report_path = output_dir / "dream3r_report.json"
@@ -176,6 +189,7 @@ def main() -> None:
     parser.add_argument("--patches", type=int, default=8)
     parser.add_argument("--d-memory", type=int, default=32)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--cache-path", default="", help="Optional server-side proposal cache path")
     args = parser.parse_args()
 
     job_dir = Path(args.job_dir)

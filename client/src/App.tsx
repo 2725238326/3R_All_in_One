@@ -4,6 +4,7 @@ import { useAppStore } from "./store/appStore";
 import type {
   AdvisorConfig,
   AdvisorDiagnostics,
+  AdvisorModelsResponse,
   AdvisorProvider,
   AppState,
   BackendStatusPayload,
@@ -42,6 +43,8 @@ import type { PreviewAsset } from "./JobDetail";
 import { DevelopmentCyclePanel } from "./DevelopmentCyclePanel";
 import { ResearchAccelerationPanel } from "./ResearchAccelerationPanel";
 import { DynamicParamForm } from "./DynamicParamForm";
+import { Dream3rParamForm } from "./Dream3rParamForm";
+import type { Dream3rCacheSourceOption } from "./Dream3rParamForm";
 import { Sidebar } from "./Sidebar";
 import { CommandBar } from "./CommandBar";
 import { QueueWorkspace } from "./QueueWorkspace";
@@ -78,8 +81,6 @@ function applyJobListItem(current: JobListItem[], next: JobListItem) {
   return updated;
 }
 
-const FALLBACK_ADVISOR_MODELS = ["gpt-4o-mini", "gpt-4.1-mini", "gemini-1.5-flash", "openrouter/auto"];
-
 function normalizeStructuredOutputMode(value: unknown): AdvisorConfig["structuredOutput"] {
   if (value === true) return "json_schema";
   if (value === false) return "prompt_only";
@@ -115,11 +116,6 @@ function advisorProviderBaseUrl(provider: AdvisorProvider) {
 
 function advisorProviderStructuredOutput(provider: AdvisorProvider) {
   return normalizeStructuredOutputMode(provider.structuredOutput ?? provider.structured_output ?? "auto");
-}
-
-function advisorModelOptions(providers: AdvisorProvider[], currentModel: string) {
-  const fromProviders = providers.flatMap((provider) => Array.isArray(provider.models) ? provider.models : []);
-  return Array.from(new Set([currentModel, ...fromProviders, ...FALLBACK_ADVISOR_MODELS].filter(Boolean)));
 }
 
 function App() {
@@ -231,6 +227,9 @@ function App() {
   }, [appState]);
 
   const advisorReady = advisorState.enabled && advisorState.configured;
+  const [advisorAvailableModels, setAdvisorAvailableModels] = useState<string[]>([]);
+  const [advisorModelsLoading, setAdvisorModelsLoading] = useState(false);
+  const [advisorModelsMessage, setAdvisorModelsMessage] = useState("");
 
   const runnableModelCatalog = useMemo(() => modelCatalog.filter((item) => item.runnable), [modelCatalog]);
 
@@ -238,6 +237,65 @@ function App() {
   const selectedModelContract = useMemo(() => modelContracts[formState.model] ?? null, [formState.model, modelContracts]);
   const selectedModelSourceTypes = useMemo(() => selectedModelContract?.allowedSourceTypes ?? selectedModelCatalog?.source_types ?? [], [selectedModelCatalog, selectedModelContract]);
   const selectedModelLaunchBlocker = useMemo(() => selectedModelContract?.launchBlocker ?? selectedModelCatalog?.launch_blocker ?? null, [selectedModelCatalog, selectedModelContract]);
+  const isDream3rSynthetic = formState.model === "dream3r" && (formState.params.demo_mode ?? "synthetic") === "synthetic";
+  const isDream3rCache = formState.model === "dream3r" && formState.params.demo_mode === "cache";
+  const dream3rCacheSource = String(formState.params.cache_source ?? "server:kitti");
+  const isDream3rCacheUpload = isDream3rCache && dream3rCacheSource === "upload";
+  const singleJobNeedsFiles = !isDream3rSynthetic && (!isDream3rCache || isDream3rCacheUpload);
+  const dream3rHistoryCacheJobs = useMemo(() => jobs.filter((item) => {
+    const paths = [...(item.job.input_files ?? []), ...(item.job.output_files ?? [])];
+    const params = item.job.params ?? {};
+    const reusableServerCache = item.job.model === "dream3r"
+      && params.demo_mode === "cache"
+      && String(params.cache_source ?? "").startsWith("server:");
+    const hasProposalCache = item.job.source_type === "proposal_cache" && paths.some((path) => /\.(pt|pth)$/i.test(path));
+    return hasProposalCache || reusableServerCache;
+  }), [jobs]);
+  const dream3rCacheSources = useMemo<Dream3rCacheSourceOption[]>(() => [
+    {
+      value: "server:kitti", label: "KITTI · 平台内置标准缓存", group: "platform", domain: "kitti",
+      detail: "服务器预置的 KITTI 缓存包，每条数据均含 Fast3R、MASt3R 和 Spann3R 对同一场景生成的候选结果。",
+      cacheFiles: [{ value: "server:kitti", label: "scf_kitti_cache.pt" }],
+    },
+    {
+      value: "server:eth3d", label: "ETH3D · 平台内置标准缓存", group: "platform", domain: "eth3d",
+      detail: "服务器预置的 ETH3D 缓存包，每条数据均含 Fast3R、MASt3R、Spann3R 和 VGGT-Omega 的同场景结果。",
+      cacheFiles: [{ value: "server:eth3d", label: "scf_eth3d_vggt_omega_cache.pt" }],
+    },
+    ...dream3rHistoryCacheJobs.map((item) => {
+      const params = item.job.params ?? {};
+      const paths = [...(item.job.input_files ?? []), ...(item.job.output_files ?? [])]
+        .filter((path) => /\.(pt|pth)$/i.test(path));
+      const originalNames = new Map((item.job.input_items ?? []).map((input) => [
+        String(input.relative_path).replace(/\\/g, "/"), input.original_name,
+      ]));
+      const cacheFiles = paths.map((path) => {
+        const normalized = String(path).replace(/\\/g, "/");
+        return { value: normalized, label: originalNames.get(normalized) ?? normalized.split("/").pop() ?? normalized };
+      });
+      const inheritedSource = String(params.cache_source ?? "");
+      const domain = String(params.domain ?? (inheritedSource === "server:eth3d" ? "eth3d" : "kitti")) === "eth3d" ? "eth3d" : "kitti";
+      const createdAt = String(item.job.created_at ?? "").replace("T", " ");
+      const reusesBuiltIn = inheritedSource.startsWith("server:");
+      return {
+        value: `job:${item.job.job_id}`,
+        label: `${domain.toUpperCase()} · ${createdAt || item.job.job_id} · ${item.job.job_id}`,
+        detail: reusesBuiltIn
+          ? `该记录会复用${domain.toUpperCase()}平台内置多专家缓存包，不会读取其他任务的数据。`
+          : `只读取该任务保存的多专家缓存包，不会与其他历史任务合并。`,
+        group: "history" as const,
+        domain: domain as "kitti" | "eth3d",
+        jobId: item.job.job_id,
+        createdAt,
+        notes: item.job.notes || undefined,
+        cacheFiles,
+      };
+    }),
+    {
+      value: "upload", label: "选择本机的一个 .pt/.pth 文件", group: "upload",
+      detail: "手动导入一个已构建好的多专家 SCF proposal cache；普通模型权重或单个模型结果不能在这里使用。",
+    },
+  ], [dream3rHistoryCacheJobs, modelCatalog]);
 
   const summary = useMemo(() => ({
     total: jobs.length,
@@ -412,6 +470,10 @@ function App() {
     if (activeWorkspace === "create" && formState.model) validateLaunch();
   }, [activeWorkspace, formState.model, files.length]);
 
+  useEffect(() => {
+    if (isDream3rSynthetic && files.length > 0) setFiles([]);
+  }, [isDream3rSynthetic]);
+
   async function validateLaunch() {
     try {
       const res = await fetchJson<ValidationCreateResponse>(`/api/models/${formState.model}/validate-create`, {
@@ -536,13 +598,34 @@ function App() {
         fetchJson<AdvisorDiagnostics>("/api/advisor/diagnostics")
       ]);
       const providers = Array.isArray(providersPayload) ? providersPayload : providersPayload.providers ?? [];
-      setAdvisorForm(normalizeAdvisorConfig(config));
+      const normalizedConfig = normalizeAdvisorConfig(config);
+      setAdvisorForm(normalizedConfig);
       setAdvisorProviders(providers);
       setAdvisorDiagnostics(diagnostics);
+      void loadAdvisorModels(normalizedConfig);
     } catch (e: any) {
       setErrorMessage(e?.message ? `无法读取 Advisor 配置：${e.message}` : "无法读取 Advisor 配置");
     } finally {
       setAdvisorConfigLoading(false);
+    }
+  }
+
+  async function loadAdvisorModels(config: AdvisorConfig = advisorForm) {
+    setAdvisorModelsLoading(true);
+    setAdvisorModelsMessage("");
+    try {
+      const payload = await fetchJson<AdvisorModelsResponse>("/api/advisor/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      setAdvisorAvailableModels(payload.models);
+      setAdvisorModelsMessage(payload.models.length > 0 ? `已获取 ${payload.models.length} 个可用模型` : "接口返回的模型列表为空");
+    } catch (e) {
+      setAdvisorAvailableModels([]);
+      setAdvisorModelsMessage(friendlyError(e, "暂时无法获取模型列表，可手动填写模型名称"));
+    } finally {
+      setAdvisorModelsLoading(false);
     }
   }
 
@@ -744,8 +827,6 @@ function App() {
     }
   }
 
-  const advisorModelChoices = advisorModelOptions(advisorProviders, advisorForm.model);
-
   return (
     <div className="app-shell">
       <Sidebar activeWorkspace={activeWorkspace} onWorkspaceChange={handleWorkspaceChange} summary={summary} />
@@ -878,8 +959,21 @@ function App() {
                             ))}
                           </select>
                         </label>
-                        {selectedModelContract && selectedModelContract.paramSchema.fields.length > 0 && (
-                          <DynamicParamForm fields={selectedModelContract.paramSchema.fields} values={formState.params} onChange={updateFormField} />
+                        {formState.model === "dream3r" ? (
+                          <Dream3rParamForm
+                            values={formState.params}
+                            cacheSources={dream3rCacheSources}
+                            onChange={(patch) => {
+                              setFormState({ params: { ...formState.params, ...patch } });
+                              if (patch.demo_mode === "synthetic" || (patch.cache_source && patch.cache_source !== "upload")) setFiles([]);
+                            }}
+                          />
+                        ) : selectedModelContract && selectedModelContract.paramSchema.fields.length > 0 && (
+                          <DynamicParamForm
+                            fields={selectedModelContract.paramSchema.fields}
+                            values={formState.params}
+                            onChange={updateFormField}
+                          />
                         )}
                       </div>
                     </div>
@@ -911,14 +1005,28 @@ function App() {
                       <span className="create-section-title">上传文件</span>
                       {files.length > 0 && <span className="create-file-count">{files.length} 个文件</span>}
                     </div>
-                    <label className="dropzone-pro">
-                      <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} />
-                      <div className="dropzone-content">
-                        <div className="dropzone-icon">📁</div>
-                        <strong>点击选择文件或拖拽到此处</strong>
-                        <span>支持图片、视频等格式</span>
+                    {isDream3rSynthetic || (isDream3rCache && !isDream3rCacheUpload) ? (
+                      <div className="dropzone-pro" aria-label="Dream3R 当前来源无需上传文件">
+                        <div className="dropzone-content">
+                          <strong>{isDream3rSynthetic ? "synthetic 模式无需上传文件" : "已从平台选择 cache 来源"}</strong>
+                          <span>{isDream3rSynthetic ? "Dream3R 将自动生成候选几何与状态输入" : "所选缓存包已经包含同场景的多专家候选结果"}</span>
+                        </div>
                       </div>
-                    </label>
+                    ) : (
+                      <label className="dropzone-pro">
+                        <input
+                          type="file"
+                          multiple={!isDream3rCache}
+                          accept={isDream3rCache ? ".pt,.pth" : undefined}
+                          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+                        />
+                        <div className="dropzone-content">
+                          <div className="dropzone-icon">📁</div>
+                          <strong>点击选择文件或拖拽到此处</strong>
+                          <span>{isDream3rCache ? "仅支持已构建好的多专家 .pt/.pth proposal-cache" : "支持图片、视频等格式"}</span>
+                        </div>
+                      </label>
+                    )}
                     {files.length > 0 && (
                       <div className="file-list">
                         {files.slice(0, 6).map((file) => (
@@ -957,7 +1065,7 @@ function App() {
                         className="create-submit-btn primary"
                         type="button"
                         onClick={() => handleCreateJob()}
-                        disabled={submitting || !!selectedModelLaunchBlocker || files.length === 0}
+                        disabled={submitting || !!selectedModelLaunchBlocker || (singleJobNeedsFiles && files.length === 0)}
                       >
                         {submitting ? (uploadProgress !== null ? `上传 ${uploadProgress}%` : "创建中...") : "创建任务"}
                       </button>
@@ -1124,9 +1232,21 @@ function App() {
                 </label>
                 <label className="field">
                   <span>Model</span>
-                  <select value={advisorForm.model} onChange={e => setAdvisorForm({ model: e.target.value })}>
-                    {advisorModelChoices.map((model) => <option key={model} value={model}>{model}</option>)}
-                  </select>
+                  <div className="advisor-model-picker">
+                    <input
+                      list="advisor-available-models"
+                      value={advisorForm.model}
+                      onChange={e => setAdvisorForm({ model: e.target.value })}
+                      placeholder="获取或输入模型 ID"
+                    />
+                    <button type="button" className="ghost-button small" onClick={() => void loadAdvisorModels()} disabled={advisorModelsLoading}>
+                      {advisorModelsLoading ? "获取中" : "刷新"}
+                    </button>
+                  </div>
+                  <datalist id="advisor-available-models">
+                    {advisorAvailableModels.map((model) => <option key={model} value={model} />)}
+                  </datalist>
+                  {advisorModelsMessage ? <small className="field-help">{advisorModelsMessage}</small> : null}
                 </label>
                 <label className="field">
                   <span>Base URL</span>

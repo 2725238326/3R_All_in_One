@@ -176,6 +176,12 @@ export type AdvisorProvider = {
   supportsStructuredOutput?: boolean;
 };
 
+export type AdvisorModelsResponse = {
+  models: string[];
+  count: number;
+  endpoint: string;
+};
+
 export type AdvisorDiagnostics = {
   state: "ready" | "unconfigured" | "error";
   checks: Array<{

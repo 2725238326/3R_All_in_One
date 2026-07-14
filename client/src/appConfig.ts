@@ -58,7 +58,7 @@ export const defaultDust3rParams = {
   lr: "0.01",
   batch_size: "1",
   max_points: "250000",
-  match_viz_count: "50"
+  match_viz_count: "30"
 };
 
 export const defaultMonst3rParams = {
@@ -124,7 +124,7 @@ export const dust3rParamChoices: Record<keyof typeof defaultDust3rParams, ParamC
   match_viz_count: [
     { value: "0", label: "0（不画匹配线）", note: "关闭" },
     { value: "20", label: "20（简洁）", note: "简洁档" },
-    { value: "50", label: "50（基线推荐）", note: "基线档" },
+    { value: "30", label: "30（清晰推荐）", note: "标准档" },
     { value: "100", label: "100（更密）", note: "密集档" }
   ]
 };

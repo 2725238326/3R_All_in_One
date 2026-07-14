@@ -227,8 +227,8 @@ export function InspectWorkspace({
                   {groupArtifacts.map((art) => (
                     <div key={art.relativePath} className="output-card">
                       <div className="dense-text">
-                        <strong>{art.name}</strong>
-                        <p>{art.note || art.role}</p>
+                        <strong>{art.label || art.name}</strong>
+                        <p>{art.name}{art.note ? ` · ${art.note}` : ""}</p>
                         <div className="output-actions">
                           {(art.kind === 'image' || art.kind === 'video') && (
                             <button onClick={() => {

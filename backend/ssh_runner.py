@@ -346,7 +346,7 @@ def _run_dust3r_v2(config: ServerConfig, job_id: str, remote_job_dir: str) -> No
         f"--lr {shlex.quote(str(params.get('lr', 0.01)))} "
         f"--batch-size {shlex.quote(str(params.get('batch_size', 1)))} "
         f"--max-points {shlex.quote(str(params.get('max_points', 250000)))} "
-        f"--match-viz-count {shlex.quote(str(params.get('match_viz_count', 50)))} "
+        f"--match-viz-count {shlex.quote(str(params.get('match_viz_count', 30)))} "
         f"2>&1 | tee {shlex.quote(log_path)}"
     )
     update_job(job_id, phase="running_remote_matches", progress_message=f"正在使用 {n_images} 张图片启动 DUSt3R...")
@@ -376,7 +376,7 @@ def _run_mast3r_v1(config: ServerConfig, job_id: str, remote_job_dir: str) -> No
         f"--lr {shlex.quote(str(params.get('lr', 0.01)))} "
         f"--batch-size {shlex.quote(str(params.get('batch_size', 1)))} "
         f"--max-points {shlex.quote(str(params.get('max_points', 250000)))} "
-        f"--match-viz-count {shlex.quote(str(params.get('match_viz_count', 50)))} "
+        f"--match-viz-count {shlex.quote(str(params.get('match_viz_count', 30)))} "
         f"2>&1 | tee {shlex.quote(log_path)}"
     )
     update_job(job_id, phase="running_remote_matches", progress_message=f"正在使用 {n_images} 张图片启动 MASt3R...")
@@ -493,6 +493,14 @@ def _run_dream3r_v11(config: ServerConfig, job_id: str, remote_job_dir: str) -> 
     runner_path = f"{config.remote_runners_dir}/dream3r_runner.py"
     log_path = f"{remote_job_dir}/logs/runner.log"
     local_log = get_job_dir(job_id) / "logs" / "runner.live.log"
+    cache_source = str(params.get("cache_source") or "")
+    server_cache_paths = {
+        "server:kitti": f"{config.remote_dream3r_repo}/runs/stage6_fusion/scf_kitti_cache.pt",
+        "server:eth3d": f"{config.remote_dream3r_repo}/runs/v22_admission/vggt_omega_cache_gate/scf_eth3d_vggt_omega_cache.pt",
+    }
+    cache_path_arg = ""
+    if cache_source in server_cache_paths:
+        cache_path_arg = f"--cache-path {shlex.quote(server_cache_paths[cache_source])} "
     cmd = (
         f"set -o pipefail && "
         f"cd {shlex.quote(config.remote_dream3r_repo)} && "
@@ -509,6 +517,7 @@ def _run_dream3r_v11(config: ServerConfig, job_id: str, remote_job_dir: str) -> 
         f"--patches {shlex.quote(str(params.get('patches', 8)))} "
         f"--d-memory {shlex.quote(str(params.get('d_memory', 32)))} "
         f"--device {shlex.quote(str(params.get('device', 'auto')))} "
+        f"{cache_path_arg}"
         f"2>&1 | tee {shlex.quote(log_path)}"
     )
     update_job(job_id, phase="running_remote_matches", progress_message="正在启动 Dream3R v1.1 候选几何融合...")

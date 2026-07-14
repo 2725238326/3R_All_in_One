@@ -84,11 +84,168 @@ class TestJobsEndpoints:
             data={
                 "model": "dream3r",
                 "source_type": "proposal_cache",
-                "params": json.dumps({"demo_mode": "cache"}),
+                "params": json.dumps({"demo_mode": "cache", "cache_source": "upload"}),
             },
         )
         assert response.status_code == 400
         assert ".pt/.pth" in response.json()["detail"]
+
+    def test_create_dream3r_cache_can_use_server_default_without_upload(self, test_client: TestClient):
+        response = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "domain": "kitti", "cache_source": "server:kitti"}),
+            },
+        )
+        assert response.status_code == 200
+        job = response.json()["job"]
+        assert job["params"]["cache_source"] == "server:kitti"
+        assert job["input_files"] == []
+
+    def test_create_dream3r_synthetic_rejects_uploaded_images(self, test_client: TestClient):
+        response = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "synthetic"}),
+            },
+            files=[("files", ("frame.png", b"not-an-image", "image/png"))],
+        )
+        assert response.status_code == 400
+        assert "不需要上传文件" in response.json()["detail"]
+
+    def test_create_dream3r_cache_rejects_non_cache_files(self, test_client: TestClient):
+        response = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "cache_source": "upload"}),
+            },
+            files=[("files", ("frame.png", b"not-an-image", "image/png"))],
+        )
+        assert response.status_code == 400
+        assert "仅支持 .pt/.pth" in response.json()["detail"]
+
+    def test_create_dream3r_cache_reuses_history_job_file(self, test_client: TestClient):
+        source_response = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "cache_source": "upload"}),
+            },
+            files=[("files", ("proposal.pt", b"cache-bytes", "application/octet-stream"))],
+        )
+        assert source_response.status_code == 200
+        source_id = source_response.json()["job"]["job_id"]
+
+        response = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "cache_source": f"job:{source_id}"}),
+            },
+        )
+        assert response.status_code == 200
+        assert len(response.json()["job"]["input_files"]) == 1
+
+    def test_create_dream3r_cache_requires_file_selection_for_multi_cache_job(self, test_client: TestClient):
+        first = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "cache_source": "upload"}),
+            },
+            files=[("files", ("proposal_a.pt", b"cache-a", "application/octet-stream"))],
+        )
+        source_job = first.json()["job"]
+        source_id = source_job["job_id"]
+        first_relative = source_job["input_files"][0]
+        second_relative = first_relative.replace("input_01.pt", "input_02.pth")
+
+        from app import ROOT
+        from job_store import load_job, save_job
+
+        second_path = ROOT / second_relative
+        second_path.write_bytes(b"cache-b")
+        stored = load_job(source_id)
+        stored.input_files.append(second_relative)
+        save_job(stored)
+
+        ambiguous = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "cache_source": f"job:{source_id}"}),
+            },
+        )
+        assert ambiguous.status_code == 400
+        assert "明确选择" in ambiguous.json()["detail"]
+
+        selected = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({
+                    "demo_mode": "cache",
+                    "cache_source": f"job:{source_id}",
+                    "cache_file": second_relative.replace("\\", "/"),
+                }),
+            },
+        )
+        assert selected.status_code == 200
+        created = selected.json()["job"]
+        assert len(created["input_files"]) == 1
+        assert created["params"]["cache_file"].endswith("input_02.pth")
+
+    def test_create_dream3r_upload_rejects_multiple_cache_files(self, test_client: TestClient):
+        response = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "cache_source": "upload"}),
+            },
+            files=[
+                ("files", ("proposal_a.pt", b"cache-a", "application/octet-stream")),
+                ("files", ("proposal_b.pth", b"cache-b", "application/octet-stream")),
+            ],
+        )
+        assert response.status_code == 400
+        assert "只能使用一个" in response.json()["detail"]
+
+    def test_create_dream3r_cache_inherits_server_source_from_history(self, test_client: TestClient):
+        source_response = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "domain": "eth3d", "cache_source": "server:eth3d"}),
+            },
+        )
+        source_id = source_response.json()["job"]["job_id"]
+
+        response = test_client.post(
+            "/api/jobs",
+            data={
+                "model": "dream3r",
+                "source_type": "proposal_cache",
+                "params": json.dumps({"demo_mode": "cache", "cache_source": f"job:{source_id}"}),
+            },
+        )
+        assert response.status_code == 200
+        params = response.json()["job"]["params"]
+        assert params["cache_source"] == "server:eth3d"
+        assert params["domain"] == "eth3d"
+        assert params["source_job_id"] == source_id
 
 
 class TestModelsEndpoints:
